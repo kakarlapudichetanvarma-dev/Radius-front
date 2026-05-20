@@ -5,6 +5,63 @@ import { registerSchema } from '../schemas/register.schema';
 import { useRegister } from '../hooks/useRegister';
 import type { RegisterRequest } from '../types/auth.types';
 
+
+function RadiusLogo() {
+  return (
+    <>
+      <div className="relative w-9 h-9 flex items-center justify-center">
+
+        <div className="logo-wave absolute" />
+
+        <div
+          className="logo-wave absolute"
+          style={{ animationDelay: '1s' }}
+        />
+
+        <div
+          className="logo-wave absolute"
+          style={{ animationDelay: '2s' }}
+        />
+
+        <div
+          className="
+            w-3
+            h-3
+            bg-yellow-400
+            rounded-full
+            z-20
+            shadow-[0_0_10px_#facc15]
+          "
+        />
+
+      </div>
+
+      <style>{`
+        .logo-wave {
+          width: 12px;
+          height: 12px;
+          border: 1.5px solid #facc15;
+          border-radius: 9999px;
+          animation: logoRadar 3s linear infinite;
+        }
+
+        @keyframes logoRadar {
+          0% {
+            transform: scale(1);
+            opacity: .8;
+          }
+
+          100% {
+            transform: scale(3);
+            opacity: 0;
+          }
+        }
+      `}</style>
+    </>
+  );
+}
+
+
 export default function RegisterPage() {
   const { register: registerUser, loading, error } = useRegister();
 
@@ -21,67 +78,143 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
+    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-md bg-zinc-900 p-8 rounded-xl space-y-4"
+        className="
+          w-full max-w-md
+          bg-zinc-950
+          border border-yellow-500/30
+          shadow-2xl shadow-yellow-500/10
+          p-8
+          rounded-2xl
+          space-y-5
+        "
       >
-        <h1 className="text-3xl font-bold text-center">Create Account</h1>
+
+        {/* Radius Header */}
+        <div className="flex items-center justify-center gap-3">
+          <RadiusLogo />
+
+          <span className="text-2xl font-bold tracking-wide text-yellow-400">
+            Radius
+          </span>
+        </div>
+
+
+        {/* Heading */}
+        <h1 className="text-3xl font-bold text-center text-yellow-400">
+          Create Account
+        </h1>
+
 
         {/* API Error */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500
-                          text-red-400 rounded-lg px-4 py-3 text-sm">
+          <div
+            className="
+              bg-red-500/10
+              border border-red-500/40
+              text-red-400
+              rounded-lg
+              px-4
+              py-3
+              text-sm
+            "
+          >
             {error}
           </div>
         )}
+
 
         {/* Username */}
         <div>
           <input
             {...register('username')}
-            placeholder="Username"
-            className="w-full p-3 rounded bg-zinc-800 border border-zinc-700
-                       focus:outline-none focus:border-green-500"
+            placeholder="Enter username"
+            className="
+              w-full
+              p-3
+              rounded-lg
+              bg-zinc-900
+              border border-zinc-700
+              text-white
+              placeholder:text-zinc-500
+              focus:outline-none
+              focus:border-yellow-400
+              focus:ring-2
+              focus:ring-yellow-400/20
+              transition
+            "
           />
+
           {errors.username && (
-            <p className="text-red-500 text-sm mt-1">
+            <p className="text-red-400 text-sm mt-1">
               {errors.username.message}
             </p>
           )}
         </div>
 
+
         {/* Email */}
         <div>
           <input
             {...register('email')}
-            placeholder="Email"
             type="email"
-            className="w-full p-3 rounded bg-zinc-800 border border-zinc-700
-                       focus:outline-none focus:border-green-500"
+            placeholder="Enter your email"
+            className="
+              w-full
+              p-3
+              rounded-lg
+              bg-zinc-900
+              border border-zinc-700
+              text-white
+              placeholder:text-zinc-500
+              focus:outline-none
+              focus:border-yellow-400
+              focus:ring-2
+              focus:ring-yellow-400/20
+              transition
+            "
           />
+
           {errors.email && (
-            <p className="text-red-500 text-sm mt-1">
+            <p className="text-red-400 text-sm mt-1">
               {errors.email.message}
             </p>
           )}
         </div>
 
+
         {/* Phone */}
         <div>
           <input
             {...register('phoneNumber')}
-            placeholder="Phone Number"
             type="tel"
-            className="w-full p-3 rounded bg-zinc-800 border border-zinc-700
-                       focus:outline-none focus:border-green-500"
+            placeholder="Enter phone number"
+            className="
+              w-full
+              p-3
+              rounded-lg
+              bg-zinc-900
+              border border-zinc-700
+              text-white
+              placeholder:text-zinc-500
+              focus:outline-none
+              focus:border-yellow-400
+              focus:ring-2
+              focus:ring-yellow-400/20
+              transition
+            "
           />
+
           {errors.phoneNumber && (
-            <p className="text-red-500 text-sm mt-1">
+            <p className="text-red-400 text-sm mt-1">
               {errors.phoneNumber.message}
             </p>
           )}
         </div>
+
 
         {/* Password */}
         <div>
@@ -89,36 +222,65 @@ export default function RegisterPage() {
             type="password"
             {...register('password')}
             placeholder="Password (min 8 characters)"
-            className="w-full p-3 rounded bg-zinc-800 border border-zinc-700
-                       focus:outline-none focus:border-green-500"
+            className="
+              w-full
+              p-3
+              rounded-lg
+              bg-zinc-900
+              border border-zinc-700
+              text-white
+              placeholder:text-zinc-500
+              focus:outline-none
+              focus:border-yellow-400
+              focus:ring-2
+              focus:ring-yellow-400/20
+              transition
+            "
           />
+
           {errors.password && (
-            <p className="text-red-500 text-sm mt-1">
+            <p className="text-red-400 text-sm mt-1">
               {errors.password.message}
             </p>
           )}
         </div>
 
+
         {/* Submit */}
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-green-600 hover:bg-green-700
-                     disabled:bg-green-900 disabled:cursor-not-allowed
-                     p-3 rounded font-bold transition-colors"
+          className="
+            w-full
+            bg-yellow-400
+            hover:bg-yellow-500
+            text-black
+            font-bold
+            p-3
+            rounded-lg
+            transition-all
+            duration-300
+            disabled:bg-yellow-700
+            disabled:cursor-not-allowed
+          "
         >
           {loading ? 'Creating Account...' : 'Register'}
         </button>
 
+
         {/* Login Link */}
         <p className="text-center text-zinc-400 text-sm">
           Already have an account?{' '}
-          <Link to="/login" className="text-green-400 hover:underline">
+          <Link
+            to="/login"
+            className="text-yellow-400 hover:text-yellow-300 hover:underline"
+          >
             Login
           </Link>
         </p>
 
       </form>
+
     </div>
   );
 }

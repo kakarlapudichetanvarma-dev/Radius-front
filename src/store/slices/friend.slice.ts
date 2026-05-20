@@ -1,98 +1,97 @@
-import {
-  createSlice
-} from '@reduxjs/toolkit';
-
-interface FriendRequest {
-  id: string;
-
-  username: string;
-}
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import type { FriendSummary, FriendRequest } from '../../types/friend.types';
+import { friendService } from '../../services/friend.service';
+import { fetchChats } from './chat.slice';
 
 interface FriendState {
-  requests:
-    FriendRequest[];
-
-  friends:
-    string[];
+  friends: FriendSummary[];
+  pendingRequests: FriendRequest[];
+  loading: boolean;
+  error: string | null;
 }
 
-const initialState:
-  FriendState = {
-    requests: [
-      {
-        id: '1',
+const initialState: FriendState = {
+  friends: [],
+  pendingRequests: [],
+  loading: false,
+  error: null
+};
 
-        username:
-          'Vami'
-      },
-
-      {
-        id: '2',
-
-        username:
-          'Rahul'
-      }
-    ],
-
-    friends: [
-      'Sami'
-    ]
-  };
-
-const friendSlice =
-  createSlice({
-    name: 'friend',
-
-    initialState,
-
-    reducers: {
-      acceptRequest:
-        (
-          state,
-          action
-        ) => {
-          const request =
-            state.requests.find(
-              request =>
-                request.id ===
-                action.payload
-            );
-
-          if (request) {
-            state.friends.push(
-              request.username
-            );
-          }
-
-          state.requests =
-            state.requests.filter(
-              request =>
-                request.id !==
-                action.payload
-            );
-        },
-
-      rejectRequest:
-        (
-          state,
-          action
-        ) => {
-          state.requests =
-            state.requests.filter(
-              request =>
-                request.id !==
-                action.payload
-            );
-        }
+export const fetchFriends = createAsyncThunk(
+  'friend/fetchFriends',
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await friendService.getFriends();
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to load friends');
     }
-  });
+  }
+);
 
-export const {
-  acceptRequest,
+export const fetchPendingRequests = createAsyncThunk(
+  'friend/fetchPendingRequests',
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await friendService.getPendingRequests();
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to load requests');
+    }
+  }
+);
 
-  rejectRequest
-} =
-  friendSlice.actions;
+export const sendFriendRequest = createAsyncThunk(
+  'friend/sendRequest',
+  async (phoneNumber: string, { rejectWithValue }) => {
+    try {
+      const res = await friendService.sendFriendRequest({ phoneNumber });
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to send request');
+    }
+  }
+);
 
-export default
-  friendSlice.reducer;
+export const respondToFriendRequest = createAsyncThunk(
+  'friend/respondToRequest',
+  async (
+    payload: { requestId: string; action: 'ACCEPT' | 'REJECT' },
+    { rejectWithValue }
+  ) => {
+    try {
+      const res = await friendService.respondToRequest(payload);
+      return { requestId: payload.requestId, action: payload.action, data: res.data.data };
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to respond to request');
+    }
+  }
+);
+
+const friendSlice = createSlice({
+  name: 'friend',
+  initialState,
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchFriends.pending, (state) => { state.loading = true; })
+      .addCase(fetchFriends.fulfilled, (state, action) => {
+        state.loading = false;
+        state.friends = action.payload;
+      })
+      .addCase(fetchFriends.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchPendingRequests.fulfilled, (state, action) => {
+        state.pendingRequests = action.payload;
+      })
+      .addCase(respondToFriendRequest.fulfilled, (state, action) => {
+        state.pendingRequests = state.pendingRequests.filter(
+          r => r.requestId !== action.payload.requestId
+        );
+      });
+  }
+});
+
+export default friendSlice.reducer;

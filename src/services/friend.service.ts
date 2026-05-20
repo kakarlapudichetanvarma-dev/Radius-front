@@ -1,29 +1,28 @@
-import {
-  api
-} from '../config/axios.config';
+import { api } from '../config/axios.config';
+import type {
+  FriendSummary,
+  FriendRequest,
+  SendFriendRequestPayload,
+  FriendRequestActionPayload
+} from '../types/friend.types';
+
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
 
 export const friendService = {
-  getFriends:
-    () =>
-      api.get(
-        '/friends'
-      ),
 
-  getRequests:
-    () =>
-      api.get(
-        '/friends/requests'
-      ),
+  getFriends: () =>
+    api.get<ApiResponse<FriendSummary[]>>('/api/v1/users/friends/search'),
 
-  sendRequest:
-    (
-      phone:
-        string
-    ) =>
-      api.post(
-        '/friends/request',
-        {
-          phone
-        }
-      )
+  getPendingRequests: () =>
+    api.get<ApiResponse<FriendRequest[]>>('/api/v1/users/friends/requests/pending'),
+
+  sendFriendRequest: (data: SendFriendRequestPayload) =>
+    api.post<ApiResponse<FriendRequest>>('/api/v1/users/friends/request', data),
+
+  respondToRequest: (data: FriendRequestActionPayload) =>
+    api.post<ApiResponse<FriendRequest>>('/api/v1/users/friends/accept', data),
 };

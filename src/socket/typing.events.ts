@@ -1,40 +1,45 @@
 import {
-  socketClient
+  socketClient,
+  safeSubscribe,
+  ensureSocketConnected
 } from './socket.client';
 
-import {
-  store
-} from '../store';
+import { store } from '../store';
 
-import {
-  setTyping,
+import { setTyping } from '../store/slices/chat.slice';
 
-  clearTyping
-} from '../store/slices/chat.slice';
+let typingConnected = false;
 
-export const connectTyping =
-  () => {
-    socketClient.subscribe(
-      '/topic/typing',
+export const connectTyping = () => {
+  if (typingConnected) return;
 
-      message => {
-        const user =
-          message.body;
+  typingConnected = true;
 
-        store.dispatch(
-          setTyping(
-            user
-          )
-        );
+  const doSub = () => {
+    safeSubscribe('/topic/typing', message => {
+      const user = message.body;
 
-        setTimeout(
-          () =>
-            store.dispatch(
-              clearTyping()
-            ),
+      store.dispatch(setTyping(user));
 
-          2000
-        );
-      }
-    );
+      setTimeout(() => {
+        store.dispatch(setTyping(null));
+      }, 2000);
+    });
   };
+
+  if (socketClient.connected) {
+    doSub();
+  } else {
+    const prev = socketClient.onConnect;
+
+    socketClient.onConnect = (frame) => {
+      if (prev) {
+        prev.call(socketClient, frame);
+      }
+
+      doSub();
+    };
+
+    ensureSocketConnected();
+  }
+};

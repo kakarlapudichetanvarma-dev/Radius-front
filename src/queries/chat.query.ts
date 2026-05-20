@@ -1,32 +1,22 @@
-import {
-  useQuery
-} from '@tanstack/react-query';
+  import { useQuery } from '@tanstack/react-query';
+  import { chatService } from '../services/chat.service';
 
-import {
-  chatService
-} from '../services/chat.service';
-
-export const useChatQuery =
-  (
-    chatId:
-      string
-  ) =>
+  export const useChatMessages = (chatId: string) =>
     useQuery({
-      queryKey: [
-        'messages',
+      queryKey: ['messages', chatId],
+      queryFn: async () => {
+        const response = await chatService.getChatMessages(chatId);
+        return response.data.data;
+      },
+      enabled: !!chatId
+    });
 
-        chatId
-      ],
-
-      queryFn:
-        async () => {
-          const response =
-            await chatService
-              .getMessages(
-                chatId
-              );
-
-          return response
-            .data;
-        }
+  export const useChats = (username: string) =>
+    useQuery({
+      queryKey: ['chats', username],
+      queryFn: async () => {
+        const response = await chatService.getChatsByUsername(username);
+        return response.data.data;
+      },
+      enabled: !!username
     });

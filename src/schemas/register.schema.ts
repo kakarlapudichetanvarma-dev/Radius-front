@@ -5,9 +5,12 @@ export const registerSchema = z.object({
 
   email: z.email('Invalid email'),
 
-  phoneNumber: z
-    .string()
-    .regex(/^[0-9]{10}$/, 'Phone number must be 10 digits'),
+  phoneNumber: z.string()
+    .min(1, 'Phone number is required')
+    .transform(val => val.startsWith('+') ? val : `+${val}`)
+    .refine(val => /^\+[1-9]\d{9,14}$/.test(val), {
+      message: 'Enter a valid phone number with country code (e.g. +919985475365)'
+    }),
 
   password: z
     .string()

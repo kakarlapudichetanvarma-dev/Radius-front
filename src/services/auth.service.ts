@@ -32,7 +32,17 @@ export const authService = {
     api.get<ApiResponse<AuthUser>>(
       '/api/v1/auth/profile'
     ),
+forgotPassword: (data: { email: string }) =>
+  api.post<ApiResponse<null>>(
+    '/api/v1/auth/forgot-password',
+    data
+  ),
 
+resetPassword: (data: { email: string; otp: string; newPassword: string }) =>
+  api.post<ApiResponse<null>>(
+    '/api/v1/auth/reset-password',
+    data
+  ),
   updateProfile: (formData: FormData) =>
     api.put<ApiResponse<AuthUser>>(
       '/api/v1/auth/profile',

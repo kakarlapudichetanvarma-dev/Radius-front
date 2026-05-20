@@ -4,6 +4,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OtpPage from './pages/OtpPage';
 import ChatPage from './pages/ChatPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';   // ✅ add
+import ResetPasswordPage from './pages/ResetPasswordPage';     // ✅ add
 import AuthGuard from './security/auth.guard';
 import GuestGuard from './router/GuestGuard';
 
@@ -33,6 +35,22 @@ export const router = createBrowserRouter([
     element: (
       <GuestGuard>
         <OtpPage />
+      </GuestGuard>
+    )
+  },
+  {
+    path: '/forgot-password',          // ✅ add
+    element: (
+      <GuestGuard>
+        <ForgotPasswordPage />
+      </GuestGuard>
+    )
+  },
+  {
+    path: '/reset-password',           // ✅ add
+    element: (
+      <GuestGuard>
+        <ResetPasswordPage />
       </GuestGuard>
     )
   },

@@ -1,72 +1,47 @@
-import {
-  createSlice
-} from '@reduxjs/toolkit';
-
-interface Group {
-  id: string;
-
-  name: string;
-
-  members:
-    string[];
-}
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { chatService } from '../../services/chat.service';
+import type { CreateGroupRequest } from '../../types/chat.types';
 
 interface GroupState {
-  groups:
-    Group[];
+  loading: boolean;
+  error: string | null;
 }
 
-const initialState:
-  GroupState = {
-    groups: [
-      {
-        id: '1',
+const initialState: GroupState = {
+  loading: false,
+  error: null
+};
 
-        name:
-          'Java Team',
-
-        members: [
-          'Sami',
-          'Vami'
-        ]
-      },
-
-      {
-        id: '2',
-
-        name:
-          'Family',
-
-        members: [
-          'Mom',
-          'Dad'
-        ]
-      }
-    ]
-  };
-
-const groupSlice =
-  createSlice({
-    name: 'group',
-
-    initialState,
-
-    reducers: {
-      addGroup: (
-        state,
-        action
-      ) => {
-        state.groups.push(
-          action.payload
-        );
-      }
+export const createGroup = createAsyncThunk(
+  'group/createGroup',
+  async (data: CreateGroupRequest, { rejectWithValue }) => {
+    try {
+      const res = await chatService.createGroup(data);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to create group');
     }
-  });
+  }
+);
 
-export const {
-  addGroup
-} =
-  groupSlice.actions;
+const groupSlice = createSlice({
+  name: 'group',
+  initialState,
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(createGroup.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createGroup.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(createGroup.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+  }
+});
 
-export default
-  groupSlice.reducer;
+export default groupSlice.reducer;
