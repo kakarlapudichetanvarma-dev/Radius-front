@@ -20,7 +20,7 @@ import {
   fetchPendingRequests
 } from '../store/slices/friend.slice';
 
-import { socketClient } from '../socket/socket.client';
+import { ensureSocketConnected, safeSubscribe } from '../socket/socket.client';
 
 export default function ChatPage() {
   const dispatch = useDispatch<AppDispatch>();
@@ -29,67 +29,44 @@ export default function ChatPage() {
     (state: RootState) => state.auth
   );
 
-  // ─────────────────────────────────────────────
-  // Initial Load
-  // ─────────────────────────────────────────────
+  // ─── Initial data load ───────────────────────
   useEffect(() => {
     if (!user?.username) return;
 
-    // ✅ FIXED
     dispatch(fetchChats(user.username));
-
     dispatch(fetchFriends());
     dispatch(fetchPendingRequests());
 
     const pollInterval = setInterval(() => {
       dispatch(fetchPendingRequests());
-
-      // ✅ FIXED
       dispatch(fetchChats(user.username));
     }, 30000);
 
     return () => clearInterval(pollInterval);
   }, [dispatch, user]);
 
-  // ─────────────────────────────────────────────
-  // Socket Connection
-  // ─────────────────────────────────────────────
+  // ─── Socket subscriptions ────────────────────
+  // ✅ Use safeSubscribe instead of reassigning onConnect.
+  // This works whether the socket is already connected or not,
+  // and does NOT disconnect/reconnect the socket on unmount.
   useEffect(() => {
-    socketClient.onConnect = () => {
-      console.log('Socket connected');
+    ensureSocketConnected();
 
-      // Typing
-      socketClient.subscribe('/topic/typing', msg => {
-        dispatch(setTyping(msg.body));
+    safeSubscribe('/topic/typing', msg => {
+      dispatch(setTyping(msg.body));
+      setTimeout(() => dispatch(setTyping(null)), 3000);
+    });
 
-        setTimeout(() => {
-          dispatch(setTyping(null));
-        }, 3000);
-      });
-
-      // Presence
-      socketClient.subscribe('/topic/presence', msg => {
-        try {
-          dispatch(updateOnlineUsers(JSON.parse(msg.body)));
-        } catch (err) {
-          console.error(err);
-        }
-      });
-    };
-
-    socketClient.onStompError = frame => {
-      console.error('STOMP error:', frame);
-    };
-
-    if (!socketClient.active) {
-      socketClient.activate();
-    }
-
-    return () => {
-      if (socketClient.active) {
-        socketClient.deactivate();
+    safeSubscribe('/topic/presence', msg => {
+      try {
+        dispatch(updateOnlineUsers(JSON.parse(msg.body)));
+      } catch (err) {
+        console.error(err);
       }
-    };
+    });
+
+    // ✅ No cleanup that deactivates the socket —
+    // socket must stay alive across re-renders
   }, [dispatch]);
 
   return (
@@ -105,7 +82,6 @@ export default function ChatPage() {
 
         {/* Chat Area */}
         <div className="col-span-8 flex flex-col min-h-0 overflow-hidden">
-
           <ChatHeader />
 
           <div className="flex-1 min-h-0 overflow-hidden">

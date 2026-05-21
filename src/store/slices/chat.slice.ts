@@ -17,10 +17,33 @@ interface ChatState {
   _optimisticAtFetchStart: Message[];
 }
 
+// ✅ Only persist selectedChatId + selectedChat + chats list
+// Messages are never persisted — always re-fetched from server
+function loadPersistedSelection(): {
+  selectedChatId: string | null;
+  selectedChat: ChatSummary | null;
+  chats: ChatSummary[];
+} {
+  try {
+    const selectedChatId = localStorage.getItem('chat_selectedChatId');
+    const selectedChatRaw = localStorage.getItem('chat_selectedChat');
+    const chatsRaw = localStorage.getItem('chat_chats');
+    return {
+      selectedChatId: selectedChatId ?? null,
+      selectedChat: selectedChatRaw ? JSON.parse(selectedChatRaw) : null,
+      chats: chatsRaw ? JSON.parse(chatsRaw) : [],
+    };
+  } catch {
+    return { selectedChatId: null, selectedChat: null, chats: [] };
+  }
+}
+
+const persisted = loadPersistedSelection();
+
 const initialState: ChatState = {
-  chats: [],
-  selectedChatId: null,
-  selectedChat: null,
+  chats: persisted.chats,
+  selectedChatId: persisted.selectedChatId,
+  selectedChat: persisted.selectedChat,
   messages: [],
   loadingChats: false,
   loadingMessages: false,
@@ -104,6 +127,10 @@ const chatSlice = createSlice({
       state.selectedChat = action.payload;
       state.selectedChatId = action.payload.chatId;
 
+      // ✅ Persist selection — survives refresh
+      localStorage.setItem('chat_selectedChatId', action.payload.chatId);
+      localStorage.setItem('chat_selectedChat', JSON.stringify(action.payload));
+
       const chat = state.chats.find(c => c.chatId === action.payload.chatId);
       if (chat) chat.unreadCount = 0;
     },
@@ -116,6 +143,10 @@ const chatSlice = createSlice({
       state.selectedChatId = null;
       state.messages = [];
       state._optimisticAtFetchStart = [];
+
+      // ✅ Clear persisted selection
+      localStorage.removeItem('chat_selectedChatId');
+      localStorage.removeItem('chat_selectedChat');
     },
 
     receiveMessage: (state, action: PayloadAction<Message>) => {
@@ -149,16 +180,12 @@ const chatSlice = createSlice({
       const optimisticIndex = state.messages.findIndex(m => m.id === optimisticId);
 
       if (realExists && optimisticIndex !== -1) {
-        // fetchMessages already added the real message — just remove the optimistic
         state.messages.splice(optimisticIndex, 1);
       } else if (optimisticIndex !== -1) {
-        // Normal path: swap optimistic for real
         state.messages[optimisticIndex] = realMessage;
       } else if (!realExists) {
-        // Neither present yet — push real
         state.messages.push(realMessage);
       }
-      // realExists && no optimistic → already clean, do nothing
 
       const chat = state.chats.find(c => c.chatId === realMessage.chatId);
       if (chat) {
@@ -241,17 +268,42 @@ const chatSlice = createSlice({
       if (state.selectedChatId?.startsWith('temp-')) {
         state.selectedChatId = action.payload.chatId;
         state.selectedChat = action.payload;
+        localStorage.setItem('chat_selectedChatId', action.payload.chatId);
+        localStorage.setItem('chat_selectedChat', JSON.stringify(action.payload));
       }
+
+      // ✅ Persist updated chats after temp→real promotion
+      localStorage.setItem('chat_chats', JSON.stringify(state.chats));
     }
   },
 
   extraReducers: (builder) => {
     builder
+      .addCase(fetchChats.fulfilled, (state, action) => {
+        // ✅ Merge server chats into existing state instead of replacing.
+        // This preserves any in-memory WS updates (lastMessage, unreadCount)
+        // while adding any new chats the server knows about.
+        const incoming: ChatSummary[] = action.payload || [];
+        const existingMap = new Map(state.chats.map(c => [c.chatId, c]));
+
+        incoming.forEach((serverChat: ChatSummary) => {
+          if (!existingMap.has(serverChat.chatId)) {
+            // New chat from server not yet in state — add it
+            existingMap.set(serverChat.chatId, serverChat);
+          }
+          // If already in state, keep the in-memory version
+          // (it may have fresher WS data like lastMessage)
+        });
+
+        state.chats = Array.from(existingMap.values());
+        state.loadingChats = false;
+
+        // ✅ Persist merged chats so sidebar survives refresh
+        localStorage.setItem('chat_chats', JSON.stringify(state.chats));
+      })
+
       .addCase(fetchMessages.pending, (state) => {
         state.loadingMessages = true;
-        // Snapshot all temp-ID messages that exist at the moment the fetch
-        // is dispatched. Used in fulfilled to know which optimistics were
-        // in-flight vs added after the fetch started.
         state._optimisticAtFetchStart = state.messages.filter(
           m => m.id.startsWith('temp-')
         );
@@ -261,34 +313,14 @@ const chatSlice = createSlice({
         state.loadingMessages = false;
 
         const incoming: Message[] = action.payload || [];
-        const incomingIds = new Set(incoming.map((m: Message) => m.id));
-
-        // IDs of temp messages that existed when the fetch was dispatched
         const snapshotIds = new Set(state._optimisticAtFetchStart.map(m => m.id));
 
-        // Find any temp-ID messages that were added AFTER the fetch started
-        // (i.e. not in the snapshot). These will be resolved by their own
-        // WS replaceOptimisticWithReal and must survive the merge untouched.
         const lateOptimistics = state.messages.filter(
           m => m.id.startsWith('temp-') && !snapshotIds.has(m.id)
         );
 
-        // The final message list is simply:
-        //   incoming (authoritative server list)
-        //   + late optimistics (not yet confirmed, keep them)
-        //
-        // We do NOT carry over real-ID messages from state — they are
-        // either already in incoming (server returned them) or they arrived
-        // via replaceOptimisticWithReal AFTER the fetch started, meaning the
-        // server WILL include them in incoming (same request window).
-        // Carrying them over was the source of the duplicate.
-
         const merged = new Map<string, Message>();
-
-        // 1. Server messages are the ground truth
         incoming.forEach((m: Message) => merged.set(m.id, m));
-
-        // 2. Late optimistics survive (will be replaced by WS shortly)
         lateOptimistics.forEach((m: Message) => merged.set(m.id, m));
 
         state.messages = Array.from(merged.values()).sort(

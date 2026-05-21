@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store';
 import MessageBubble from './MessageBubble';
@@ -19,14 +19,19 @@ export default function ChatWindow() {
   useEffect(() => {
     if (!selectedChatId || selectedChatId.startsWith('temp-')) return;
 
-    // ✅ Only fetch if we switched to a different chat
+    // ✅ Always resubscribe — safeSubscribe in message.events
+    // guards against duplicate subscriptions internally.
+    // But we must NOT skip based on lastFetchedChatId after a
+    // socket reconnect, so we always call subscribeToChat.
+    subscribeToChat(selectedChatId);
+
+    // ✅ Only re-fetch messages if we actually switched chats
     if (lastFetchedChatId.current === selectedChatId) return;
     lastFetchedChatId.current = selectedChatId;
 
     console.log('🔁 fetchMessages called for:', selectedChatId);
     dispatch(fetchMessages(selectedChatId));
     dispatch(markRead(selectedChatId));
-    subscribeToChat(selectedChatId);
   }, [selectedChatId, dispatch]);
 
   useEffect(() => {
@@ -35,30 +40,30 @@ export default function ChatWindow() {
 
   if (loadingMessages) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <p className="text-zinc-500 text-sm">Loading messages...</p>
+      <div className="flex-1 flex items-center justify-center bg-black">
+        <p className="text-yellow-400 text-sm">Loading messages...</p>
       </div>
     );
   }
 
   if (!selectedChatId) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <p className="text-zinc-500 text-sm">Select a chat to start messaging</p>
+      <div className="flex-1 flex items-center justify-center bg-black">
+        <p className="text-yellow-400 text-sm">Select a chat to start messaging</p>
       </div>
     );
   }
 
   if (messages.length === 0 && !loadingMessages) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <p className="text-zinc-500 text-sm">No messages yet. Say hello! 👋</p>
+      <div className="flex-1 flex items-center justify-center bg-black">
+        <p className="text-yellow-400 text-sm">No messages yet. Say hello! 👋</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-zinc-950">
+    <div className="h-full overflow-y-auto bg-black">
       <div className="p-4 space-y-2 min-h-full flex flex-col">
         {messages.map(message => (
           <MessageBubble

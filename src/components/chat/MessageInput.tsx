@@ -207,7 +207,7 @@ export default function MessageInput() {
 
         {/* Upload Error */}
         {uploadError && (
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg z-50">
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-600 text-yellow-400 text-xs px-3 py-1.5 rounded-lg z-50">
             {uploadError}
           </div>
         )}
@@ -221,7 +221,7 @@ export default function MessageInput() {
 
         {/* File Preview */}
         {pendingUpload && (
-          <div className="bg-zinc-800 border-t border-zinc-700 px-4 py-3 flex items-center gap-3">
+          <div className="bg-black border-t border-yellow-500/20 px-4 py-3 flex items-center gap-3">
             {pendingUpload.uploadType === 'IMAGE' && pendingUpload.previewUrl ? (
               <img
                 src={pendingUpload.previewUrl}
@@ -229,22 +229,22 @@ export default function MessageInput() {
                 className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
               />
             ) : (
-              <div className="w-16 h-16 rounded-lg bg-zinc-700 flex items-center justify-center text-3xl flex-shrink-0">
+              <div className="w-16 h-16 rounded-lg bg-yellow-500/20 flex items-center justify-center text-3xl flex-shrink-0">
                 {getFileIcon(pendingUpload.fileType)}
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-white text-sm truncate font-medium">{pendingUpload.fileName}</p>
-              <p className="text-zinc-400 text-xs">{formatFileSize(pendingUpload.fileSizeBytes)}</p>
+              <p className="text-yellow-400 text-sm truncate font-medium">{pendingUpload.fileName}</p>
+              <p className="text-yellow-500/70 text-xs">{formatFileSize(pendingUpload.fileSizeBytes)}</p>
             </div>
-            <button onClick={clearPending} className="text-zinc-400 hover:text-red-400 text-xl transition flex-shrink-0">
+            <button onClick={clearPending} className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0">
               ✕
             </button>
           </div>
         )}
 
         {/* Input Bar */}
-        <div className="h-16 bg-zinc-900 border-t border-zinc-800 flex items-center gap-2 px-4">
+        <div className="h-16 bg-black border-t border-yellow-500/20 flex items-center gap-2 px-4">
 
           {/* Emoji */}
           <button
@@ -258,7 +258,7 @@ export default function MessageInput() {
           {/* File */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-zinc-400 hover:text-white text-xl transition flex-shrink-0"
+            className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0"
             disabled={!selectedChat || uploading}
           >
             📎
@@ -283,14 +283,14 @@ export default function MessageInput() {
             onKeyDown={handleKeyDown}
             placeholder={selectedChat ? 'Type message...' : 'Select a chat to start messaging'}
             disabled={!selectedChat || uploading}
-            className="flex-1 p-3 rounded-xl bg-zinc-800 text-white outline-none disabled:opacity-50 placeholder:text-zinc-500"
+            className="flex-1 p-3 rounded-xl bg-zinc-800 text-yellow-400 outline-none disabled:opacity-50 placeholder:text-zinc-500"
           />
 
           {/* Send */}
           <button
             onClick={handleSend}
             disabled={!selectedChat || uploading || (!text.trim() && !pendingUpload)}
-            className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-xl disabled:opacity-50 transition flex-shrink-0 text-white font-medium"
+            className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded-xl disabled:opacity-50 transition flex-shrink-0 text-yellow-400 font-medium"
           >
             {uploading ? (
               <span className="flex items-center gap-1">

@@ -148,7 +148,7 @@ export default function ChatHeader() {
         />
       )}
 
-      <div className="h-16 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4">
+      <div className="h-16 bg-black border-b border-yellow-500/20 flex items-center justify-between px-4">
 
         <div className="flex items-center gap-3">
 
@@ -164,7 +164,7 @@ export default function ChatHeader() {
                     className="w-10 h-10 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white font-bold">
+                  <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold">
                     {chatName
                       ?.charAt(0)
                       .toUpperCase() || '?'}
@@ -173,32 +173,30 @@ export default function ChatHeader() {
 
                 {/* ✅ Online dot */}
                 <div
-                  className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-zinc-900 ${
-                    online
+                  className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black ${online
                       ? 'bg-green-500'
                       : 'bg-zinc-600'
-                  }`}
+                    }`}
                 />
               </div>
             )}
 
           <div>
-            <p className="text-white font-medium">
+            <p className="text-yellow-400 font-medium">
               {chatName || 'Select a chat'}
             </p>
 
             {typingUser ? (
-              <p className="text-sm text-green-500">
+              <p className="text-sm text-yellow-400">
                 {typingUser} is typing...
               </p>
             ) : selectedChat &&
               selectedChat.type === 'PRIVATE' ? (
               <p
-                className={`text-xs ${
-                  online
+                className={`text-xs ${online
                     ? 'text-green-400'
-                    : 'text-zinc-500'
-                }`}
+                    : 'text-yellow-500/60'
+                  }`}
               >
                 {online ? 'Online' : 'Offline'}
               </p>
