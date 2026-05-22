@@ -1,25 +1,20 @@
-// upload.service.ts
-// Handles all client-side file preparation before sending via chat.
-// Files are converted to base64 and sent as part of the message payload
-// (matching your backend's fileData / fileName / fileType / fileSizeBytes fields).
-
 export type UploadFileType = 'IMAGE' | 'FILE';
 
 export interface PreparedUpload {
-  base64: string;          // full data URL: "data:image/png;base64,..."
+  base64: string;
   fileName: string;
-  fileType: string;        // MIME type e.g. "image/png"
+  fileType: string;
   fileSizeBytes: number;
   uploadType: UploadFileType;
-  previewUrl: string | null; // object URL for images, null for other files
+  previewUrl: string | null;
 }
 
-// ── Accepted file types ───────────────────────────────────────────────────────
 const ACCEPTED_IMAGE_TYPES = [
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
+  'image/svg+xml',
 ];
 
 const ACCEPTED_FILE_TYPES = [
@@ -28,32 +23,73 @@ const ACCEPTED_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
+  'text/csv',
+  // ✅ All zip/archive MIME variants across browsers and OSes
   'application/zip',
+  'application/x-zip',
+  'application/x-zip-compressed',
+  'application/x-compressed',
   'application/x-rar-compressed',
+  'application/vnd.rar',
+  'application/x-7z-compressed',
+  'application/x-tar',
+  'application/gzip',
+  'application/octet-stream', // ✅ generic fallback — many files including zips on Windows
   'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
   'audio/mpeg',
   'audio/mp3',
+  'audio/wav',
+  'audio/ogg',
+  'audio/webm',
+  'audio/aac',
 ];
 
-const MAX_FILE_SIZE_MB = 20;
+// ✅ Extension-based fallback for when browser reports wrong/generic MIME type
+const ACCEPTED_EXTENSIONS = [
+  '.zip', '.rar', '.7z', '.tar', '.gz',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.ppt', '.pptx',
+  '.txt', '.mp4', '.webm', '.mp3', '.wav', '.aac', '.ogg',
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const MAX_FILE_SIZE_MB = 200000;
 
 export const isImageFile = (file: File): boolean =>
   ACCEPTED_IMAGE_TYPES.includes(file.type);
 
-export const isAcceptedFile = (file: File): boolean =>
-  ACCEPTED_IMAGE_TYPES.includes(file.type) ||
-  ACCEPTED_FILE_TYPES.includes(file.type);
+export const isVideoFile = (file: File): boolean =>
+  file.type.startsWith('video/');
+
+export const isAudioFile = (file: File): boolean =>
+  file.type.startsWith('audio/');
+
+// ✅ Check MIME type first, then fall back to extension
+export const isAcceptedFile = (file: File): boolean => {
+  if (
+    ACCEPTED_IMAGE_TYPES.includes(file.type) ||
+    ACCEPTED_FILE_TYPES.includes(file.type)
+  ) {
+    return true;
+  }
+  // Fallback: extension check for ambiguous MIME types
+  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '');
+  return ACCEPTED_EXTENSIONS.includes(ext);
+};
 
 export const validateFile = (file: File): string | null => {
   if (!isAcceptedFile(file)) {
-    return `Unsupported file type: ${file.type || 'unknown'}`;
+    const ext = file.name.split('.').pop()?.toUpperCase() || 'unknown';
+    return `Unsupported file type: ${ext}`;
   }
   const sizeMB = file.size / (1024 * 1024);
   if (sizeMB > MAX_FILE_SIZE_MB) {
-    return `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`;
+    return `File too large. Maximum is ${MAX_FILE_SIZE_MB}MB.`;
   }
   return null;
 };
@@ -66,17 +102,17 @@ export const formatFileSize = (bytes: number): string => {
 
 export const getFileIcon = (fileType: string | null | undefined): string => {
   if (!fileType) return '📎';
+  if (fileType.startsWith('image/')) return '🖼️';
+  if (fileType.startsWith('video/')) return '🎥';
+  if (fileType.startsWith('audio/')) return '🎵';
   if (fileType.includes('pdf')) return '📄';
   if (fileType.includes('word') || fileType.includes('doc')) return '📝';
-  if (fileType.includes('excel') || fileType.includes('sheet')) return '📊';
-  if (fileType.includes('zip') || fileType.includes('rar')) return '🗜️';
-  if (fileType.includes('video')) return '🎥';
-  if (fileType.includes('audio')) return '🎵';
+  if (fileType.includes('excel') || fileType.includes('sheet') || fileType.includes('csv')) return '📊';
+  if (fileType.includes('powerpoint') || fileType.includes('presentation')) return '📑';
+  if (fileType.includes('zip') || fileType.includes('rar') || fileType.includes('7z') || fileType.includes('tar') || fileType.includes('gzip')) return '🗜️';
   if (fileType.includes('text')) return '📃';
   return '📎';
 };
-
-// ── Core: convert File → base64 string ───────────────────────────────────────
 
 const fileToBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -86,17 +122,13 @@ const fileToBase64 = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
-// ── Main prepare function ─────────────────────────────────────────────────────
-// Call this before sending a message with an attachment.
-
 export const prepareUpload = async (file: File): Promise<PreparedUpload> => {
   const validationError = validateFile(file);
-  if (validationError) {
-    throw new Error(validationError);
-  }
+  if (validationError) throw new Error(validationError);
 
   const base64 = await fileToBase64(file);
   const isImage = isImageFile(file);
+  const isMedia = isImage || isVideoFile(file) || isAudioFile(file);
 
   return {
     base64,
@@ -104,21 +136,13 @@ export const prepareUpload = async (file: File): Promise<PreparedUpload> => {
     fileType: file.type,
     fileSizeBytes: file.size,
     uploadType: isImage ? 'IMAGE' : 'FILE',
-    previewUrl: isImage ? URL.createObjectURL(file) : null,
+    previewUrl: isMedia ? URL.createObjectURL(file) : null,
   };
 };
 
-// ── Cleanup ───────────────────────────────────────────────────────────────────
-// Call this when you no longer need the preview URL (e.g. after send)
-// to free browser memory.
-
 export const revokePreview = (previewUrl: string | null): void => {
-  if (previewUrl) {
-    URL.revokeObjectURL(previewUrl);
-  }
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
 };
 
-// ── Accept string for <input accept="..."> ────────────────────────────────────
-
 export const INPUT_ACCEPT =
-  'image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.mp4,.mp3';
+  'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.rar,.7z,.tar,.gz';

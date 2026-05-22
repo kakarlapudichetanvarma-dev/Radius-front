@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../store';
 
@@ -9,30 +9,25 @@ import ChatWindow from '../components/chat/ChatWindow';
 import MessageInput from '../components/chat/MessageInput';
 import IncomingCallModal from '../components/call/IncomingCallModal';
 
-import {
-  fetchChats,
-  setTyping,
-  updateOnlineUsers
-} from '../store/slices/chat.slice';
-
-import {
-  fetchFriends,
-  fetchPendingRequests
-} from '../store/slices/friend.slice';
-
+import { fetchChats, setTyping, updateOnlineUsers } from '../store/slices/chat.slice';
+import { fetchFriends, fetchPendingRequests } from '../store/slices/friend.slice';
 import { ensureSocketConnected, safeSubscribe } from '../socket/socket.client';
+import { revokePreview, type PreparedUpload } from '../services/upload.service';
 
 export default function ChatPage() {
   const dispatch = useDispatch<AppDispatch>();
+  const { user } = useSelector((state: RootState) => state.auth);
 
-  const { user } = useSelector(
-    (state: RootState) => state.auth
-  );
+  // ✅ Shared pendingUpload state — ChatWindow sets it on drop, MessageInput uses it
+  const [pendingUpload, setPendingUpload] = useState<PreparedUpload | null>(null);
 
-  // ─── Initial data load ───────────────────────
+  const handleSetPendingUpload = (upload: PreparedUpload | null) => {
+    if (pendingUpload?.previewUrl) revokePreview(pendingUpload.previewUrl);
+    setPendingUpload(upload);
+  };
+
   useEffect(() => {
     if (!user?.username) return;
-
     dispatch(fetchChats(user.username));
     dispatch(fetchFriends());
     dispatch(fetchPendingRequests());
@@ -45,51 +40,42 @@ export default function ChatPage() {
     return () => clearInterval(pollInterval);
   }, [dispatch, user]);
 
-  // ─── Socket subscriptions ────────────────────
-  // ✅ Use safeSubscribe instead of reassigning onConnect.
-  // This works whether the socket is already connected or not,
-  // and does NOT disconnect/reconnect the socket on unmount.
   useEffect(() => {
     ensureSocketConnected();
-
     safeSubscribe('/topic/typing', msg => {
       dispatch(setTyping(msg.body));
       setTimeout(() => dispatch(setTyping(null)), 3000);
     });
-
     safeSubscribe('/topic/presence', msg => {
-      try {
-        dispatch(updateOnlineUsers(JSON.parse(msg.body)));
-      } catch (err) {
-        console.error(err);
-      }
+      try { dispatch(updateOnlineUsers(JSON.parse(msg.body))); }
+      catch (err) { console.error(err); }
     });
-
-    // ✅ No cleanup that deactivates the socket —
-    // socket must stay alive across re-renders
   }, [dispatch]);
 
   return (
     <MainLayout>
       <IncomingCallModal />
-
       <div className="grid grid-cols-12 h-full overflow-hidden">
 
-        {/* Sidebar */}
         <div className="col-span-4 min-h-0 overflow-hidden">
           <Sidebar />
         </div>
 
-        {/* Chat Area */}
         <div className="col-span-8 flex flex-col min-h-0 overflow-hidden">
           <ChatHeader />
 
+          {/* ✅ ChatWindow gets full remaining space and handles drag-drop */}
           <div className="flex-1 min-h-0 overflow-hidden">
-            <ChatWindow />
+            <ChatWindow onFilePrepared={handleSetPendingUpload} />
           </div>
 
-          <MessageInput />
+          {/* ✅ MessageInput receives pendingUpload from parent */}
+          <MessageInput
+            pendingUpload={pendingUpload}
+            setPendingUpload={handleSetPendingUpload}
+          />
         </div>
+
       </div>
     </MainLayout>
   );

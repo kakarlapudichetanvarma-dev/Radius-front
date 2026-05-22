@@ -6,24 +6,6 @@ interface Props {
   disabled?: boolean;
 }
 
-const ACCEPTED_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/plain',
-  'application/zip',
-  'application/x-rar-compressed',
-  'video/mp4',
-  'audio/mpeg',
-  'audio/mp3',
-];
-
 const MAX_FILE_SIZE_MB = 20;
 
 export default function DragDropZone({ onFileDrop, children, disabled }: Props) {
@@ -31,9 +13,6 @@ export default function DragDropZone({ onFileDrop, children, disabled }: Props) 
   const [error, setError] = useState<string | null>(null);
 
   const validateFile = (file: File): string | null => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      return `File type "${file.type || 'unknown'}" is not supported.`;
-    }
     const sizeMB = file.size / (1024 * 1024);
     if (sizeMB > MAX_FILE_SIZE_MB) {
       return `File is too large. Max size is ${MAX_FILE_SIZE_MB}MB.`;
@@ -101,7 +80,7 @@ export default function DragDropZone({ onFileDrop, children, disabled }: Props) 
           <div className="text-5xl mb-3">📂</div>
           <p className="text-green-400 font-semibold text-lg">Drop file to send</p>
           <p className="text-zinc-400 text-sm mt-1">
-            Images, PDFs, Word, Excel, ZIP, Video, Audio
+            Any file up to {MAX_FILE_SIZE_MB}MB
           </p>
         </div>
       )}

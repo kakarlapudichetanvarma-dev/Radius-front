@@ -15,10 +15,9 @@ interface ChatState {
   error: string | null;
   chatClosedAt: Record<string, string>;
   _optimisticAtFetchStart: Message[];
+  _locallyReadChatIds: string[];
 }
 
-// ✅ Only persist selectedChatId + selectedChat + chats list
-// Messages are never persisted — always re-fetched from server
 function loadPersistedSelection(): {
   selectedChatId: string | null;
   selectedChat: ChatSummary | null;
@@ -38,10 +37,29 @@ function loadPersistedSelection(): {
   }
 }
 
+function deduplicateChats(chats: ChatSummary[]): ChatSummary[] {
+  const seen = new Map<string, ChatSummary>();
+  for (const chat of chats) {
+    const existing = seen.get(chat.chatId);
+    if (!existing) {
+      seen.set(chat.chatId, chat);
+    } else {
+      const existingTime = existing.lastMessageAt ? new Date(existing.lastMessageAt).getTime() : 0;
+      const incomingTime = chat.lastMessageAt ? new Date(chat.lastMessageAt).getTime() : 0;
+      if (incomingTime > existingTime) seen.set(chat.chatId, chat);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function addToReadList(list: string[], chatId: string): string[] {
+  return list.includes(chatId) ? list : [...list, chatId];
+}
+
 const persisted = loadPersistedSelection();
 
 const initialState: ChatState = {
-  chats: persisted.chats,
+  chats: deduplicateChats(persisted.chats),
   selectedChatId: persisted.selectedChatId,
   selectedChat: persisted.selectedChat,
   messages: [],
@@ -51,10 +69,10 @@ const initialState: ChatState = {
   onlineUsers: [],
   error: null,
   chatClosedAt: {},
-  _optimisticAtFetchStart: []
+  _optimisticAtFetchStart: [],
+  _locallyReadChatIds: [],
 };
 
-// Thunks
 export const fetchChats = createAsyncThunk(
   'chat/fetchChats',
   async (username: string, { rejectWithValue }) => {
@@ -113,9 +131,21 @@ const chatSlice = createSlice({
   initialState,
 
   reducers: {
-    setSelectedChat: (state, action: PayloadAction<ChatSummary>) => {
-      const isSameChat = state.selectedChatId === action.payload.chatId;
+    setSelectedChat: (state, action: PayloadAction<ChatSummary | null>) => {
+      if (action.payload === null) {
+        if (state.selectedChatId) {
+          state.chatClosedAt[state.selectedChatId] = new Date().toISOString();
+        }
+        state.selectedChat = null;
+        state.selectedChatId = null;
+        state.messages = [];
+        state._optimisticAtFetchStart = [];
+        localStorage.removeItem('chat_selectedChatId');
+        localStorage.removeItem('chat_selectedChat');
+        return;
+      }
 
+      const isSameChat = state.selectedChatId === action.payload.chatId;
       if (!isSameChat) {
         if (state.selectedChatId) {
           state.chatClosedAt[state.selectedChatId] = new Date().toISOString();
@@ -127,12 +157,12 @@ const chatSlice = createSlice({
       state.selectedChat = action.payload;
       state.selectedChatId = action.payload.chatId;
 
-      // ✅ Persist selection — survives refresh
       localStorage.setItem('chat_selectedChatId', action.payload.chatId);
       localStorage.setItem('chat_selectedChat', JSON.stringify(action.payload));
 
-      const chat = state.chats.find(c => c.chatId === action.payload.chatId);
+      const chat = state.chats.find(c => c.chatId === action.payload!.chatId);
       if (chat) chat.unreadCount = 0;
+      state._locallyReadChatIds = addToReadList(state._locallyReadChatIds, action.payload.chatId);
     },
 
     clearSelectedChat: (state) => {
@@ -143,10 +173,24 @@ const chatSlice = createSlice({
       state.selectedChatId = null;
       state.messages = [];
       state._optimisticAtFetchStart = [];
-
-      // ✅ Clear persisted selection
       localStorage.removeItem('chat_selectedChatId');
       localStorage.removeItem('chat_selectedChat');
+    },
+
+    clearChatState: (state) => {
+      state.chats = [];
+      state.selectedChatId = null;
+      state.selectedChat = null;
+      state.messages = [];
+      state.typingUser = null;
+      state.onlineUsers = [];
+      state.error = null;
+      state.chatClosedAt = {};
+      state._optimisticAtFetchStart = [];
+      state._locallyReadChatIds = [];
+      localStorage.removeItem('chat_selectedChatId');
+      localStorage.removeItem('chat_selectedChat');
+      localStorage.removeItem('chat_chats');
     },
 
     receiveMessage: (state, action: PayloadAction<Message>) => {
@@ -155,10 +199,22 @@ const chatSlice = createSlice({
       if (!exists) {
         state.messages = [...state.messages, msg];
       }
-      const chat = state.chats.find(c => c.chatId === msg.chatId);
-      if (chat) {
+
+      const chatIndex = state.chats.findIndex(c => c.chatId === msg.chatId);
+      if (chatIndex !== -1) {
+        const chat = state.chats[chatIndex];
         chat.lastMessage = msg.content;
         chat.lastMessageAt = msg.sentAt;
+
+        if (state.selectedChatId !== msg.chatId) {
+          state._locallyReadChatIds = state._locallyReadChatIds.filter(id => id !== msg.chatId);
+          chat.unreadCount = (chat.unreadCount || 0) + 1;
+        }
+
+        // ✅ Bubble to top on new message
+        const updated = { ...chat };
+        state.chats.splice(chatIndex, 1);
+        state.chats.unshift(updated);
       }
     },
 
@@ -175,7 +231,6 @@ const chatSlice = createSlice({
       action: PayloadAction<{ optimisticId: string; realMessage: Message }>
     ) => {
       const { optimisticId, realMessage } = action.payload;
-
       const realExists = state.messages.some(m => m.id === realMessage.id);
       const optimisticIndex = state.messages.findIndex(m => m.id === optimisticId);
 
@@ -187,10 +242,16 @@ const chatSlice = createSlice({
         state.messages.push(realMessage);
       }
 
-      const chat = state.chats.find(c => c.chatId === realMessage.chatId);
-      if (chat) {
+      const chatIndex = state.chats.findIndex(c => c.chatId === realMessage.chatId);
+      if (chatIndex !== -1) {
+        const chat = state.chats[chatIndex];
         chat.lastMessage = realMessage.content;
         chat.lastMessageAt = realMessage.sentAt;
+
+        // ✅ Bubble to top when our sent message is confirmed
+        const updated = { ...chat };
+        state.chats.splice(chatIndex, 1);
+        state.chats.unshift(updated);
       }
     },
 
@@ -200,9 +261,7 @@ const chatSlice = createSlice({
 
     markAllMessagesRead: (state, action: PayloadAction<string>) => {
       if (state.selectedChatId === action.payload) {
-        state.messages.forEach(m => {
-          if (m.status !== 'READ') m.status = 'READ';
-        });
+        state.messages.forEach(m => { if (m.status !== 'READ') m.status = 'READ'; });
       }
     },
 
@@ -233,13 +292,50 @@ const chatSlice = createSlice({
       state.messages = [...state.messages, action.payload];
     },
 
-    updateChatLastMessage: (state, action: PayloadAction<Message>) => {
-      const chat = state.chats.find(c => c.chatId === action.payload.chatId);
-      if (chat) {
-        chat.lastMessage = action.payload.content;
-        chat.lastMessageAt = action.payload.sentAt;
-      }
-    },
+    // ✅ FIXED: bubbles chat to top + correctly increments unread
+    updateChatLastMessage: (
+state,
+action
+) => {
+
+const incomingMsg =
+action.payload;
+
+const chatIndex =
+state.chats.findIndex(
+c =>
+c.chatId ===
+incomingMsg.chatId
+);
+
+if (chatIndex !== -1) {
+const updatedChat = {
+  ...state.chats[
+    chatIndex
+  ]
+};
+
+// ✅ update preview only
+updatedChat.lastMessage =
+  incomingMsg.content;
+
+updatedChat.lastMessageAt =
+  incomingMsg.sentAt;
+
+// ✅ DO NOT increment unread here
+
+// move chat to top
+state.chats.splice(
+  chatIndex,
+  1
+);
+
+state.chats.unshift(
+  updatedChat
+);
+}
+},
+
 
     updateChatAvatar: (
       state,
@@ -253,82 +349,91 @@ const chatSlice = createSlice({
     },
 
     promoteTempChat: (state, action: PayloadAction<ChatSummary>) => {
-      const tempIndex = state.chats.findIndex(
+      state.chats = state.chats.filter(
         c =>
-          c.chatId.startsWith('temp-') &&
-          c.otherParticipantUsername === action.payload.otherParticipantUsername
+          !(c.chatId.startsWith('temp-') && c.otherParticipantUsername === action.payload.otherParticipantUsername) &&
+          c.chatId !== action.payload.chatId
       );
+      state.chats.unshift(action.payload);
 
-      if (tempIndex !== -1) {
-        state.chats[tempIndex] = action.payload;
-      } else {
-        state.chats.unshift(action.payload);
-      }
-
-      if (state.selectedChatId?.startsWith('temp-')) {
+      if (state.selectedChatId?.startsWith('temp-') || state.selectedChatId === action.payload.chatId) {
         state.selectedChatId = action.payload.chatId;
         state.selectedChat = action.payload;
         localStorage.setItem('chat_selectedChatId', action.payload.chatId);
         localStorage.setItem('chat_selectedChat', JSON.stringify(action.payload));
       }
 
-      // ✅ Persist updated chats after temp→real promotion
+      state.chats = deduplicateChats(state.chats);
       localStorage.setItem('chat_chats', JSON.stringify(state.chats));
-    }
+    },
+
+    resetUnread: (state, action: PayloadAction<string>) => {
+      const chat = state.chats.find(c => c.chatId === action.payload);
+      if (chat) chat.unreadCount = 0;
+      state._locallyReadChatIds = addToReadList(state._locallyReadChatIds, action.payload);
+    },
   },
 
   extraReducers: (builder) => {
     builder
       .addCase(fetchChats.fulfilled, (state, action) => {
-        // ✅ Merge server chats into existing state instead of replacing.
-        // This preserves any in-memory WS updates (lastMessage, unreadCount)
-        // while adding any new chats the server knows about.
         const incoming: ChatSummary[] = action.payload || [];
-        const existingMap = new Map(state.chats.map(c => [c.chatId, c]));
+        const tempChats = state.chats.filter(c => c.chatId.startsWith('temp-'));
 
-        incoming.forEach((serverChat: ChatSummary) => {
-          if (!existingMap.has(serverChat.chatId)) {
-            // New chat from server not yet in state — add it
-            existingMap.set(serverChat.chatId, serverChat);
+        const merged: ChatSummary[] = incoming.map(serverChat => {
+          const inMemory = state.chats.find(c => c.chatId === serverChat.chatId);
+          if (!inMemory) return serverChat;
+
+          const serverTime = serverChat.lastMessageAt ? new Date(serverChat.lastMessageAt).getTime() : 0;
+          const memoryTime = inMemory.lastMessageAt ? new Date(inMemory.lastMessageAt).getTime() : 0;
+          const base = memoryTime > serverTime ? inMemory : serverChat;
+
+          if (state._locallyReadChatIds.includes(serverChat.chatId)) {
+            return { ...base, unreadCount: 0 };
           }
-          // If already in state, keep the in-memory version
-          // (it may have fresher WS data like lastMessage)
+
+          return {
+  ...base,
+  unreadCount: state._locallyReadChatIds.includes(serverChat.chatId)
+    ? 0
+    : Math.max(serverChat.unreadCount || 0, inMemory.unreadCount || 0)
+};
         });
 
-        state.chats = Array.from(existingMap.values());
-        state.loadingChats = false;
+        for (const temp of tempChats) {
+          const alreadyHasReal = merged.some(
+            c => c.type === 'PRIVATE' && c.otherParticipantUsername === temp.otherParticipantUsername
+          );
+          if (!alreadyHasReal) merged.push(temp);
+        }
 
-        // ✅ Persist merged chats so sidebar survives refresh
+        state.chats = deduplicateChats(merged);
+        state.loadingChats = false;
         localStorage.setItem('chat_chats', JSON.stringify(state.chats));
       })
 
       .addCase(fetchMessages.pending, (state) => {
         state.loadingMessages = true;
-        state._optimisticAtFetchStart = state.messages.filter(
-          m => m.id.startsWith('temp-')
-        );
+        state._optimisticAtFetchStart = state.messages.filter(m => m.id.startsWith('temp-'));
       })
 
       .addCase(fetchMessages.fulfilled, (state, action) => {
-        state.loadingMessages = false;
+  state.loadingMessages = false;
+  const incoming: Message[] = action.payload || [];
 
-        const incoming: Message[] = action.payload || [];
-        const snapshotIds = new Set(state._optimisticAtFetchStart.map(m => m.id));
+  // ✅ Keep ALL optimistic messages regardless of snapshot timing
+  const allOptimistics = state.messages.filter(m => m.id.startsWith('temp-'));
 
-        const lateOptimistics = state.messages.filter(
-          m => m.id.startsWith('temp-') && !snapshotIds.has(m.id)
-        );
+  const merged = new Map<string, Message>();
+  incoming.forEach((m: Message) => merged.set(m.id, m));
+  // Optimistics added last so they override any server version
+  allOptimistics.forEach((m: Message) => merged.set(m.id, m));
 
-        const merged = new Map<string, Message>();
-        incoming.forEach((m: Message) => merged.set(m.id, m));
-        lateOptimistics.forEach((m: Message) => merged.set(m.id, m));
-
-        state.messages = Array.from(merged.values()).sort(
-          (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
-        );
-
-        state._optimisticAtFetchStart = [];
-      })
+  state.messages = Array.from(merged.values()).sort(
+    (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
+  );
+  state._optimisticAtFetchStart = [];
+})
 
       .addCase(sendPrivateMessage.fulfilled, (state, action) => {
         if (action.payload) {
@@ -353,11 +458,10 @@ const chatSlice = createSlice({
       .addCase(markRead.fulfilled, (state, action) => {
         const chat = state.chats.find(c => c.chatId === action.payload);
         if (chat) chat.unreadCount = 0;
+        state._locallyReadChatIds = addToReadList(state._locallyReadChatIds, action.payload);
 
         if (state.selectedChatId === action.payload) {
-          state.messages.forEach(m => {
-            if (m.status !== 'READ') m.status = 'READ';
-          });
+          state.messages.forEach(m => { if (m.status !== 'READ') m.status = 'READ'; });
         }
       });
   }
@@ -366,6 +470,7 @@ const chatSlice = createSlice({
 export const {
   setSelectedChat,
   clearSelectedChat,
+  clearChatState,
   receiveMessage,
   updateMessageStatus,
   replaceOptimisticWithReal,
@@ -379,7 +484,8 @@ export const {
   addSystemMessage,
   updateChatLastMessage,
   updateChatAvatar,
-  promoteTempChat
+  promoteTempChat,
+  resetUnread,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
