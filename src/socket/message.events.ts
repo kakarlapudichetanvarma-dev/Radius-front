@@ -13,7 +13,7 @@ let _updateMessageStatus: any = null;
 
 let presenceSubscribed = false;
 
-// ✅ ALL ACTIVE CHAT TOPICS
+// ✅ ACTIVE CHAT TOPICS
 const activeChatTopics =
 new Set<string>();
 
@@ -57,8 +57,10 @@ updateMessageStatus: any
 ) => {
 
 _store = store;
+
 _receiveMessage =
 receiveMessage;
+
 _updateMessageStatus =
 updateMessageStatus;
 };
@@ -97,8 +99,7 @@ null,
 date: null
 });
 
-const findMatchingOptimisticId =
-(
+const findMatchingOptimisticId = (
 incomingContent: string,
 incomingChatId: string
 ): string | null => {
@@ -117,15 +118,13 @@ if (
 ) {
 
   return optimisticId;
-}
-
-
+} 
 }
 
 return null;
 };
 
-// ✅ SUBSCRIBE TO CHAT
+// ✅ SUBSCRIBE
 export const subscribeToChat = (
 chatId: string
 ): void => {
@@ -133,15 +132,19 @@ chatId: string
 const topic =
 `/topic/chat/${chatId}`;
 
-// ✅ already subscribed
+// already subscribed
 if (
 activeChatTopics.has(
 topic
 )
 ) {
-return;
+
+activeChatTopics.delete(
+topic
+);
 }
 
+// ✅ always re-add
 activeChatTopics.add(
 topic
 );
@@ -153,7 +156,7 @@ topic
 
 safeSubscribe(
 topic,
-frame => {
+frame => {          
   if (
     !_store ||
     !_receiveMessage
@@ -212,7 +215,7 @@ frame => {
     payload.messageId ||
     payload.id;
 
-  // ✅ duplicate protection
+  // duplicate prevention
   if (
     alreadyProcessedIds.has(
       messageId
@@ -242,7 +245,12 @@ frame => {
   const currentUserId =
     state.auth.user?.id;
 
-  // ✅ OWN MESSAGE ECHO
+  // ✅ CURRENT CHAT CHECK
+  const isCurrentChat =
+    state.chat.selectedChatId ===
+    realMessage.chatId;
+
+  // ✅ OWN MESSAGE
   if (
     payload.senderId ===
     currentUserId
@@ -277,24 +285,28 @@ frame => {
 
     } else {
 
-      const exists =
-        state.chat.messages.some(
-          (m: any) =>
-            m.id ===
-            messageId
-        );
+      // ✅ ONLY SHOW IN CURRENT CHAT
+      if (isCurrentChat) {
 
-      if (!exists) {
+        const exists =
+          state.chat.messages.some(
+            (m: any) =>
+              m.id ===
+              messageId
+          );
 
-        _store.dispatch(
-          _receiveMessage(
-            realMessage
-          )
-        );
+        if (!exists) {
+
+          _store.dispatch(
+            _receiveMessage(
+              realMessage
+            )
+          );
+        }
       }
     }
 
-    // ✅ update sidebar
+    // ✅ SIDEBAR UPDATE
     _store.dispatch({
       type:
         'chat/updateChatLastMessage',
@@ -314,8 +326,12 @@ frame => {
         messageId
     );
 
-  // ✅ ALWAYS RECEIVE
-  if (!exists) {
+  // ✅ ONLY SHOW MESSAGE
+  // IN CURRENT OPEN CHAT
+  if (
+    isCurrentChat &&
+    !exists
+  ) {
 
     _store.dispatch(
       _receiveMessage(
@@ -324,15 +340,25 @@ frame => {
     );
   }
 
-  // ✅ UPDATE CHAT LIST
+  // ✅ increment unread
+  if (!isCurrentChat) {
+
+    _store.dispatch({
+      type:
+        'chat/incrementUnread',
+      payload:
+        realMessage.chatId
+    });
+  }
+
+  // ✅ ALWAYS UPDATE SIDEBAR
   _store.dispatch({
     type:
       'chat/updateChatLastMessage',
     payload:
       realMessage
   });
-}
-
+} 
 );
 };
 
@@ -377,8 +403,6 @@ frame => {
     );
   }
 }
-
-
 );
 };
 
@@ -397,6 +421,5 @@ alreadyProcessedIds.clear();
 activeChatTopics.clear();
 };
 
-// ✅ NO MORE UNSUBSCRIBE
 export const unsubscribeFromChat =
 (): void => {};

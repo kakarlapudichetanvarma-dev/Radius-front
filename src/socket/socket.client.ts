@@ -24,8 +24,8 @@ export const socketClient = new Client({
 });
 
 // ✅ active subscriptions
-const activeSubscriptions:
-  Record<string, any> = {};
+let activeSubscriptions:
+Record<string, any> = {};
 
 // ✅ queued subscriptions before socket connects
 const pendingSubscriptions:

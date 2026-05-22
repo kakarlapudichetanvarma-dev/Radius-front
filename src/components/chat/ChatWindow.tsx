@@ -2,9 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store';
 import MessageBubble from './MessageBubble';
-import { fetchMessages, resetUnread } from '../../store/slices/chat.slice';
+import { fetchMessages, resetUnread, markRead } from '../../store/slices/chat.slice';
 import { subscribeToChat } from '../../socket/message.events';
-import { chatService } from '../../services/chat.service';
 import {
   prepareUpload,
   type PreparedUpload
@@ -24,29 +23,65 @@ export default function ChatWindow({ onFilePrepared }: Props) {
   const loadingMessages = useSelector((state: RootState) => state.chat.loadingMessages);
   const selectedChatId = useSelector((state: RootState) => state.chat.selectedChatId);
 
+  // ✅ Pull all chats so we can subscribe to every topic on mount
+  const chats = useSelector((state: RootState) => state.chat.chats);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
 
+  // ✅ Track which chatId we've already called markRead for in this session
+  const markedReadRef = useRef<string | null>(null);
+
+  // ✅ Track which chats we've already subscribed to, to avoid duplicate subs
+  const subscribedChatsRef = useRef<Set<string>>(new Set());
+
+  // ─────────────────────────────────────────────────────────────
+  // ✅ FIX: Subscribe to ALL chats when the chats list loads
+  // After a refresh, messages.events.ts has no active subscriptions.
+  // Without this, incoming messages from chats other than the currently
+  // open one are silently dropped — the socket fires but nobody is listening.
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-  if (!selectedChatId || selectedChatId.startsWith('temp-')) return;
-  
-  subscribeToChat(selectedChatId);
-  
-  // ✅ Only fetch if we have no real messages yet for this chat
-  // This prevents wiping optimistic bubbles that were just sent
-  const hasRealMessages = messages.some(
-    m => !m.id.startsWith('temp-') && m.chatId === selectedChatId
-  );
-  
-  if (!hasRealMessages) {
-    dispatch(fetchMessages(selectedChatId));
-  }
-  
-  dispatch(resetUnread(selectedChatId));
-  chatService.markRead(selectedChatId).catch(() => {});
-}, [selectedChatId, dispatch]), [selectedChatId, dispatch];
+    if (!chats || chats.length === 0) return;
+
+    chats.forEach(chat => {
+      if (
+        !chat.chatId.startsWith('temp-') &&
+        !subscribedChatsRef.current.has(chat.chatId)
+      ) {
+        subscribedChatsRef.current.add(chat.chatId);
+        subscribeToChat(chat.chatId);
+      }
+    });
+  }, [chats]);
+
+  // ─────────────────────────────────────────────────────────────
+  // Handle opening a specific chat — fetch messages + mark read
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedChatId || selectedChatId.startsWith('temp-')) return;
+
+    // subscribeToChat is idempotent — safe to call again here
+    subscribeToChat(selectedChatId);
+
+    const hasRealMessages = messages.some(
+      m => !m.id.startsWith('temp-') && m.chatId === selectedChatId
+    );
+
+    if (!hasRealMessages) {
+      dispatch(fetchMessages(selectedChatId));
+    }
+
+    dispatch(resetUnread(selectedChatId));
+
+    // ✅ Only fire markRead once per chat open, not on every re-render
+    if (markedReadRef.current !== selectedChatId) {
+      markedReadRef.current = selectedChatId;
+      dispatch(markRead(selectedChatId));
+    }
+  }, [selectedChatId, dispatch]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
