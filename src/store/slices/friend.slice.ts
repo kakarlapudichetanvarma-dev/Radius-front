@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import type { PayloadAction } from '@reduxjs/toolkit';
 import type { FriendSummary, FriendRequest } from '../../types/friend.types';
 import { friendService } from '../../services/friend.service';
-import { fetchChats } from './chat.slice';
 
 interface FriendState {
   friends: FriendSummary[];
@@ -71,7 +71,17 @@ export const respondToFriendRequest = createAsyncThunk(
 const friendSlice = createSlice({
   name: 'friend',
   initialState,
-  reducers: {},
+  reducers: {
+    updateFriendAvatar: (
+      state,
+      action: PayloadAction<{ userId: string; profilePicture: string | null }>
+    ) => {
+      const friend = state.friends.find(f => f.userId === action.payload.userId);
+      if (friend) {
+        friend.profilePicture = action.payload.profilePicture;
+      }
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchFriends.pending, (state) => { state.loading = true; })
@@ -94,4 +104,5 @@ const friendSlice = createSlice({
   }
 });
 
+export const { updateFriendAvatar } = friendSlice.actions;
 export default friendSlice.reducer;

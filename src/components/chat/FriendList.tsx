@@ -26,10 +26,8 @@ export default function FriendList() {
     );
 
     if (existingChat) {
-      // Reset unread count
       dispatch(resetUnread(existingChat.chatId));
 
-      // Toggle open/close
       if (selectedChatId === existingChat.chatId) {
         dispatch(setSelectedChat(null));
       } else {
@@ -37,7 +35,6 @@ export default function FriendList() {
       }
     }
 
-    // Typing indicator
     dispatch(setTyping(friendUsername));
 
     setTimeout(() => {
@@ -45,7 +42,6 @@ export default function FriendList() {
     }, 3000);
   };
 
-  // No friends
   if (friends.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -74,10 +70,21 @@ export default function FriendList() {
             }`}
           >
             <div className="flex items-center gap-3">
-              {/* Avatar */}
+              {/* Avatar — reads profilePicture from Redux, updates instantly */}
               <div className="relative">
-                <div className="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center text-white text-sm font-medium">
-                  {friend.username.charAt(0).toUpperCase()}
+                <div className="w-9 h-9 rounded-full bg-zinc-700 overflow-hidden flex items-center justify-center text-white text-sm font-medium">
+                  {friend.profilePicture ? (
+                    <img
+                      src={`http://localhost:8080${friend.profilePicture}`}
+                      alt={friend.username}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    friend.username.charAt(0).toUpperCase()
+                  )}
                 </div>
 
                 {/* Online indicator */}

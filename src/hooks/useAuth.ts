@@ -2,6 +2,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import { setAuth, logout } from '../store/slices/auth.slice';
 import { authService } from '../services/auth.service';
+import { connectPresence } from '../socket/presence.events';
+import { connectAvatarEvents, disconnectAvatarEvents } from '../socket/Avatar.events';
+import { ensureSocketConnected } from '../socket/socket.client';
 import type {
     RegisterRequest,
     LoginRequest,
@@ -26,17 +29,23 @@ export const useAuth = () => {
         return response.data;
     };
 
-    // Verify OTP — saves token and user
+    // Verify OTP — saves token and user, then starts socket listeners
     const verifyOtp = async (data: OtpRequest) => {
         const response = await authService.verifyOtp(data);
         if (response.data.success) {
-            dispatch(setAuth(response.data.data)); // ← saves token to redux + localStorage
+            dispatch(setAuth(response.data.data));
+
+            // ✅ Start socket connection and listeners after login
+            ensureSocketConnected();
+            connectPresence();
+            connectAvatarEvents();
         }
         return response.data;
     };
 
     // Logout
     const logoutUser = () => {
+        disconnectAvatarEvents();
         dispatch(logout());
     };
 

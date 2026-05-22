@@ -1,8 +1,8 @@
+import { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store';
 import { respondToFriendRequest, fetchFriends, fetchPendingRequests } from '../../store/slices/friend.slice';
 import { fetchChats } from '../../store/slices/chat.slice';
-import { useState } from 'react';
 import AddFriendModal from './AddFriendModal';
 import ProfileModal from './ProfileModal';
 
@@ -15,8 +15,9 @@ export default function ProfileBar() {
   const [showRequests, setShowRequests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
-  const profilePicUrl = user?.profilePicture
-    ? `http://localhost:8080${user.profilePicture}`
+  // ✅ Read directly from Redux — updates instantly when auth.user.profilePicture changes
+  const avatarSrc = user?.profilePicture
+    ? `http://localhost:8080${user.profilePicture}?t=${Date.now()}`
     : null;
 
   const handleRespond = async (requestId: string, action: 'ACCEPT' | 'REJECT') => {
@@ -33,14 +34,18 @@ export default function ProfileBar() {
 
       <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          {/* Avatar — clicking opens profile too */}
+
+          {/* Avatar — clicking opens profile */}
           <button onClick={() => setShowProfile(true)} className="focus:outline-none">
             <div className="w-10 h-10 rounded-full overflow-hidden bg-green-600 flex items-center justify-center text-white font-bold">
-              {profilePicUrl ? (
+              {avatarSrc ? (
                 <img
-                  src={profilePicUrl}
+                  src={avatarSrc}
                   alt={user?.username}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
                 />
               ) : (
                 user?.username?.charAt(0).toUpperCase() || '?'
@@ -79,7 +84,6 @@ export default function ProfileBar() {
             )}
           </div>
 
-          {/* Settings / Profile */}
           <button
             onClick={() => setShowProfile(true)}
             className="text-zinc-400 hover:text-white transition"
@@ -95,7 +99,6 @@ export default function ProfileBar() {
         <div className="absolute top-16 right-0 w-80 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto">
           <div className="p-3 border-b border-zinc-700 flex justify-between items-center">
             <p className="text-white font-semibold text-sm">Friend Requests</p>
-
             <button
               onClick={() => setShowRequests(false)}
               className="text-zinc-500 hover:text-white text-xs"
@@ -105,45 +108,28 @@ export default function ProfileBar() {
           </div>
 
           {pendingRequests.length === 0 ? (
-            <p className="text-zinc-500 text-sm p-4 text-center">
-              No pending requests
-            </p>
+            <p className="text-zinc-500 text-sm p-4 text-center">No pending requests</p>
           ) : (
             pendingRequests.map(request => (
-              <div
-                key={request.requestId}
-                className="p-4 border-b border-zinc-800"
-              >
+              <div key={request.requestId} className="p-4 border-b border-zinc-800">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-white text-sm font-bold">
                     {request.requesterUsername?.charAt(0).toUpperCase() || '?'}
                   </div>
-
                   <div>
-                    <p className="text-white text-sm font-medium">
-                      {request.requesterUsername}
-                    </p>
-
-                    <p className="text-zinc-500 text-xs">
-                      {request.requesterPhone}
-                    </p>
+                    <p className="text-white text-sm font-medium">{request.requesterUsername}</p>
+                    <p className="text-zinc-500 text-xs">{request.requesterPhone}</p>
                   </div>
                 </div>
-
                 <div className="flex gap-2">
                   <button
-                    onClick={() =>
-                      handleRespond(request.requestId, 'ACCEPT')
-                    }
+                    onClick={() => handleRespond(request.requestId, 'ACCEPT')}
                     className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-1.5 rounded-lg transition"
                   >
                     Accept
                   </button>
-
                   <button
-                    onClick={() =>
-                      handleRespond(request.requestId, 'REJECT')
-                    }
+                    onClick={() => handleRespond(request.requestId, 'REJECT')}
                     className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white text-sm py-1.5 rounded-lg transition"
                   >
                     Reject
