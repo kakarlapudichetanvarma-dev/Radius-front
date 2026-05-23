@@ -11,6 +11,7 @@ interface ChatState {
   loadingChats: boolean;
   loadingMessages: boolean;
   typingUser: string | null;
+  typingUsers: Record<string, string[]>; // ✅ NEW: chatId -> [usernames currently typing]
   onlineUsers: string[];
   error: string | null;
   chatClosedAt: Record<string, string>;
@@ -79,6 +80,7 @@ const initialState: ChatState = {
   loadingChats: false,
   loadingMessages: false,
   typingUser: null,
+  typingUsers: {}, // ✅ NEW
   onlineUsers: [],
   error: null,
   chatClosedAt: {},
@@ -180,9 +182,6 @@ const chatSlice = createSlice({
       localStorage.setItem('chat_selectedChatId', action.payload.chatId);
       localStorage.setItem('chat_selectedChat', JSON.stringify(action.payload));
 
-      // ✅ Clear badge visually only — does NOT write to _locallyReadChatIds
-      // markRead thunk (dispatched in ChatWindow) is the only thing that
-      // writes _locallyReadChatIds, ensuring server confirmation before persisting
       const chat = state.chats.find(c => c.chatId === action.payload!.chatId);
       if (chat) chat.unreadCount = 0;
 
@@ -207,6 +206,7 @@ const chatSlice = createSlice({
       state.selectedChat = null;
       state.messages = [];
       state.typingUser = null;
+      state.typingUsers = {}; // ✅ NEW
       state.onlineUsers = [];
       state.error = null;
       state.chatClosedAt = {};
@@ -240,8 +240,6 @@ const chatSlice = createSlice({
         chat.lastMessageAt = msg.sentAt;
 
         if (state.selectedChatId !== msg.chatId) {
-          // ✅ New message arrived for a chat that's not open —
-          // remove from read list so future fetchChats won't suppress its unread
           state._locallyReadChatIds = state._locallyReadChatIds.filter(
             id => id !== msg.chatId
           );
@@ -253,7 +251,6 @@ const chatSlice = createSlice({
         state.chats.splice(chatIndex, 1);
         state.chats.unshift(updated);
 
-        // ✅ Persist so sidebar survives refresh
         localStorage.setItem('chat_chats', JSON.stringify(state.chats));
       }
     },
@@ -298,7 +295,6 @@ const chatSlice = createSlice({
         state.chats.splice(chatIndex, 1);
         state.chats.unshift(updated);
 
-        // ✅ Persist so sidebar survives refresh
         localStorage.setItem('chat_chats', JSON.stringify(state.chats));
       }
     },
@@ -320,6 +316,36 @@ const chatSlice = createSlice({
 
     setTyping: (state, action: PayloadAction<string | null>) => {
       state.typingUser = action.payload;
+    },
+
+    // ✅ NEW: Add a user to the typing list for a specific chat
+    setUserTypingInChat: (
+      state,
+      action: PayloadAction<{ chatId: string; username: string }>
+    ) => {
+      const { chatId, username } = action.payload;
+      if (!state.typingUsers[chatId]) {
+        state.typingUsers[chatId] = [];
+      }
+      if (!state.typingUsers[chatId].includes(username)) {
+        state.typingUsers[chatId].push(username);
+      }
+    },
+
+    // ✅ NEW: Remove a user from the typing list for a specific chat
+    clearUserTypingInChat: (
+      state,
+      action: PayloadAction<{ chatId: string; username: string }>
+    ) => {
+      const { chatId, username } = action.payload;
+      if (state.typingUsers[chatId]) {
+        state.typingUsers[chatId] = state.typingUsers[chatId].filter(u => u !== username);
+      }
+    },
+
+    // ✅ NEW: Wipe all typing state for a chat (used on unsubscribe)
+    clearAllTypingInChat: (state, action: PayloadAction<string>) => {
+      delete state.typingUsers[action.payload];
     },
 
     updateOnlineUsers: (state, action: PayloadAction<string[]>) => {
@@ -357,7 +383,6 @@ const chatSlice = createSlice({
         state.chats.splice(chatIndex, 1);
         state.chats.unshift(updatedChat);
 
-        // ✅ Persist so sidebar survives refresh
         localStorage.setItem('chat_chats', JSON.stringify(state.chats));
       }
     },
@@ -401,8 +426,6 @@ const chatSlice = createSlice({
 
       if (isActivelyOpen) return;
 
-      // ✅ New message for this chat — evict from read list so fetchChats
-      // won't suppress its unread count on next poll
       state._locallyReadChatIds = state._locallyReadChatIds.filter(
         id => id !== action.payload
       );
@@ -410,14 +433,12 @@ const chatSlice = createSlice({
 
       chat.unreadCount = (chat.unreadCount || 0) + 1;
 
-      // ✅ Persist so unread count survives refresh
       localStorage.setItem('chat_chats', JSON.stringify(state.chats));
     },
 
     resetUnread: (state, action: PayloadAction<string>) => {
       const chat = state.chats.find(c => c.chatId === action.payload);
       if (chat) chat.unreadCount = 0;
-      // ✅ Do NOT touch _locallyReadChatIds here — only markRead.fulfilled does that
     },
   },
 
@@ -430,9 +451,6 @@ const chatSlice = createSlice({
         const merged: ChatSummary[] = incoming.map(serverChat => {
           const inMemory = state.chats.find(c => c.chatId === serverChat.chatId);
 
-          // ✅ Only suppress server unread if markRead API confirmed success
-          // AND no new message has arrived since (receiveMessage/incrementUnread
-          // both evict chatId from this list when a new message comes in)
           const wasConfirmedRead = state._locallyReadChatIds.includes(serverChat.chatId);
 
           if (!inMemory) {
@@ -511,7 +529,6 @@ const chatSlice = createSlice({
               : action.payload.content || 'No messages yet';
             chat.lastMessageAt = action.payload.sentAt;
 
-            // ✅ Persist so sidebar preview survives refresh
             localStorage.setItem('chat_chats', JSON.stringify(state.chats));
           }
         }
@@ -528,7 +545,6 @@ const chatSlice = createSlice({
               : action.payload.content || 'No messages yet';
             chat.lastMessageAt = action.payload.sentAt;
 
-            // ✅ Persist so sidebar preview survives refresh
             localStorage.setItem('chat_chats', JSON.stringify(state.chats));
           }
         }
@@ -542,8 +558,6 @@ const chatSlice = createSlice({
           chat.unreadCount = 0;
         }
 
-        // ✅ THE ONLY PLACE _locallyReadChatIds is written to
-        // This only runs after the backend confirmed the read successfully
         state._locallyReadChatIds = addToReadList(state._locallyReadChatIds, chatId);
         saveReadList(state._locallyReadChatIds);
 
@@ -567,6 +581,9 @@ export const {
   markAllMessagesRead,
   deleteMessageLocally,
   setTyping,
+  setUserTypingInChat,
+  clearUserTypingInChat,
+  clearAllTypingInChat,
   updateOnlineUsers,
   setUserOnline,
   setUserOffline,

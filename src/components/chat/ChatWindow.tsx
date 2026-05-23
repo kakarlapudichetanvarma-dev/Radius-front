@@ -1,9 +1,35 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import type { AppDispatch, RootState } from '../../store';
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  useState
+} from 'react';
+
+import {
+  useDispatch,
+  useSelector
+} from 'react-redux';
+
+import type {
+  AppDispatch,
+  RootState
+} from '../../store';
+
 import MessageBubble from './MessageBubble';
-import { fetchMessages, resetUnread, markRead } from '../../store/slices/chat.slice';
-import { subscribeToChat } from '../../socket/message.events';
+import TypingIndicator from './TypingIndicator';
+
+import {
+  fetchMessages,
+  resetUnread,
+  markRead,
+} from '../../store/slices/chat.slice';
+
+import { useTypingUsers } from '../../hooks/useTyping';
+
+import {
+  subscribeToChat
+} from '../../socket/message.events';
+
 import {
   prepareUpload,
   type PreparedUpload
@@ -16,33 +42,41 @@ interface Props {
 const MAX_FILE_SIZE_MB = 20;
 
 export default function ChatWindow({ onFilePrepared }: Props) {
+
   const dispatch = useDispatch<AppDispatch>();
 
-  const messages = useSelector((state: RootState) => state.chat.messages);
-  const { user } = useSelector((state: RootState) => state.auth);
-  const loadingMessages = useSelector((state: RootState) => state.chat.loadingMessages);
-  const selectedChatId = useSelector((state: RootState) => state.chat.selectedChatId);
+  const messages = useSelector(
+    (state: RootState) => state.chat.messages
+  );
 
-  // ✅ Pull all chats so we can subscribe to every topic on mount
-  const chats = useSelector((state: RootState) => state.chat.chats);
+  const { user } = useSelector(
+    (state: RootState) => state.auth
+  );
+
+  const loadingMessages = useSelector(
+    (state: RootState) => state.chat.loadingMessages
+  );
+
+  const selectedChatId = useSelector(
+    (state: RootState) => state.chat.selectedChatId
+  );
+
+  const chats = useSelector(
+    (state: RootState) => state.chat.chats
+  );
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
 
-  // ✅ Track which chatId we've already called markRead for in this session
-  const markedReadRef = useRef<string | null>(null);
+  // ✅ Read typing users from Redux — populated by message.events.ts centrally
+  const typingUsers = useTypingUsers(selectedChatId);
 
-  // ✅ Track which chats we've already subscribed to, to avoid duplicate subs
+  const markedReadRef = useRef<string | null>(null);
   const subscribedChatsRef = useRef<Set<string>>(new Set());
 
-  // ─────────────────────────────────────────────────────────────
-  // ✅ FIX: Subscribe to ALL chats when the chats list loads
-  // After a refresh, messages.events.ts has no active subscriptions.
-  // Without this, incoming messages from chats other than the currently
-  // open one are silently dropped — the socket fires but nobody is listening.
-  // ─────────────────────────────────────────────────────────────
+  // ✅ Subscribe to ALL chats so sidebar typing + messages work for all of them
   useEffect(() => {
     if (!chats || chats.length === 0) return;
 
@@ -57,13 +91,10 @@ export default function ChatWindow({ onFilePrepared }: Props) {
     });
   }, [chats]);
 
-  // ─────────────────────────────────────────────────────────────
-  // Handle opening a specific chat — fetch messages + mark read
-  // ─────────────────────────────────────────────────────────────
+  // ✅ Open chat — fetch messages, mark read
   useEffect(() => {
     if (!selectedChatId || selectedChatId.startsWith('temp-')) return;
 
-    // subscribeToChat is idempotent — safe to call again here
     subscribeToChat(selectedChatId);
 
     const hasRealMessages = messages.some(
@@ -76,16 +107,16 @@ export default function ChatWindow({ onFilePrepared }: Props) {
 
     dispatch(resetUnread(selectedChatId));
 
-    // ✅ Only fire markRead once per chat open, not on every re-render
     if (markedReadRef.current !== selectedChatId) {
       markedReadRef.current = selectedChatId;
       dispatch(markRead(selectedChatId));
     }
   }, [selectedChatId, dispatch]);
 
+  // ✅ Auto-scroll when messages or typing changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, typingUsers]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -115,6 +146,7 @@ export default function ChatWindow({ onFilePrepared }: Props) {
     e.stopPropagation();
     dragCounterRef.current = 0;
     setIsDragging(false);
+
     if (!selectedChatId) return;
 
     const file = Array.from(e.dataTransfer.files)[0];
@@ -139,7 +171,9 @@ export default function ChatWindow({ onFilePrepared }: Props) {
   if (!selectedChatId) {
     return (
       <div className="flex-1 flex items-center justify-center bg-black h-full">
-        <p className="text-yellow-400 text-sm">Select a chat to start messaging</p>
+        <p className="text-yellow-400 text-sm">
+          Select a chat to start messaging
+        </p>
       </div>
     );
   }
@@ -152,6 +186,7 @@ export default function ChatWindow({ onFilePrepared }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-zinc-950/85 border-2 border-dashed border-yellow-500 rounded-xl flex flex-col items-center justify-center pointer-events-none">
           <div className="text-6xl mb-3">📂</div>
@@ -176,6 +211,7 @@ export default function ChatWindow({ onFilePrepared }: Props) {
         </div>
       ) : (
         <div className="p-4 space-y-2 min-h-full flex flex-col">
+
           {messages.map(message => (
             <MessageBubble
               key={message.id}
@@ -183,6 +219,16 @@ export default function ChatWindow({ onFilePrepared }: Props) {
               isMe={message.senderId === user?.id}
             />
           ))}
+
+          {/* ✅ Typing bubbles — one per person typing, from Redux state */}
+          {typingUsers.map(username => (
+            <TypingIndicator
+              key={username}
+              username={username}
+              variant="bubble"
+            />
+          ))}
+
           <div ref={bottomRef} />
         </div>
       )}

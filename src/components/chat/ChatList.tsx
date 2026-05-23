@@ -4,6 +4,8 @@ import type { AppDispatch, RootState } from '../../store';
 import { setSelectedChat } from '../../store/slices/chat.slice';
 import type { ChatSummary } from '../../types/chat.types';
 import CreateGroupModal from './CreateGroupModal';
+import TypingIndicator from './TypingIndicator';
+import { useIsTyping } from '../../hooks/useTyping';
 
 // ── Avatar component defined OUTSIDE ChatList so it never gets recreated ──────
 interface AvatarProps {
@@ -20,7 +22,7 @@ function Avatar({ chat, size = 10, avatarUrl, online, chatName, isGroup }: Avata
     <div className="relative flex-shrink-0">
       {avatarUrl ? (
         <img
-          key={avatarUrl}  // ✅ Forces remount when URL changes — browser fetches fresh
+          key={avatarUrl}
           src={avatarUrl}
           alt={chatName}
           className={`w-${size} h-${size} rounded-full object-cover`}
@@ -37,13 +39,81 @@ function Avatar({ chat, size = 10, avatarUrl, online, chatName, isGroup }: Avata
   );
 }
 
+// ✅ Extracted chat item so each one can independently call useIsTyping
+interface ChatItemProps {
+  chat: ChatSummary;
+  chatName: string;
+  isGroup: boolean;
+  avatarUrl: string | null;
+  online: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+function ChatItem({ chat, chatName, isGroup, avatarUrl, online, isSelected, onClick }: ChatItemProps) {
+  // ✅ Each chat item independently watches its own typing state in Redux
+  const isTyping = useIsTyping(chat.chatId);
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left p-4 border-b border-zinc-800 hover:bg-zinc-800/50 transition ${
+        isSelected ? 'bg-zinc-800' : ''
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <Avatar
+          chat={chat}
+          size={10}
+          avatarUrl={avatarUrl}
+          online={online}
+          chatName={chatName}
+          isGroup={isGroup}
+        />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-center">
+            <p className="text-white text-sm font-medium truncate">
+              {chatName}
+            </p>
+            {chat.lastMessageAt && (
+              <p className="text-zinc-500 text-xs flex-shrink-0 ml-2">
+                {new Date(chat.lastMessageAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            )}
+          </div>
+
+          <div className="flex justify-between items-center">
+            {/* ✅ Show typing indicator OR last message — never both */}
+            {isTyping ? (
+              <TypingIndicator variant="inline" />
+            ) : (
+              <p className="text-zinc-500 text-xs truncate">
+                {chat.lastMessage || 'No messages yet'}
+              </p>
+            )}
+
+            {/* ✅ Hide unread badge while typing indicator is shown */}
+            {!isTyping && chat.unreadCount > 0 && !isSelected && (
+              <span className="ml-2 bg-green-500 text-white text-xs rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center flex-shrink-0">
+                {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function ChatList() {
   const dispatch = useDispatch<AppDispatch>();
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
 
-  // ✅ liveUpdates stores the FULL url already (no double-prefix)
-  // key = username, value = full URL with cache-bust
   const [liveUpdates, setLiveUpdates] = useState<Record<string, string>>({});
 
   const chats = useSelector((state: RootState) => state.chat.chats);
@@ -51,16 +121,11 @@ export default function ChatList() {
   const onlineUsers = useSelector((state: RootState) => state.chat.onlineUsers);
   const selectedChatId = useSelector((state: RootState) => state.chat.selectedChatId);
 
-  // ✅ Listen for profile-updated events from ProfileModal (own user)
-  //    AND from useSocket.ts (other users via WebSocket)
   useEffect(() => {
     const handler = (e: CustomEvent) => {
       const { username, profilePicture } = e.detail;
       if (!username || !profilePicture) return;
 
-      // ✅ profilePicture from the event is already a full URL with ?t= cache-bust
-      //    (set correctly in both ProfileModal.tsx and useSocket.ts)
-      //    Just prepend localhost if it's a relative path
       const fullUrl = profilePicture.startsWith('http')
         ? profilePicture
         : `http://localhost:8080${profilePicture}`;
@@ -82,23 +147,18 @@ export default function ChatList() {
     return false;
   }, [onlineUsers, friends]);
 
-  // ✅ Build avatar URL — liveUpdates takes priority (instant update),
-  //    then friend store, then chat summary, then null (show initials)
   const getAvatarUrl = useCallback((chat: ChatSummary): string | null => {
     if (chat.type !== 'PRIVATE') return null;
     const username = chat.otherParticipantUsername;
     if (!username) return null;
 
-    // Live update wins — already has cache-bust timestamp
     if (liveUpdates[username]) return liveUpdates[username];
 
-    // Friend store
     const friend = friends.find(f => f.username === username);
     if (friend?.profilePicture) {
       return `http://localhost:8080${friend.profilePicture}?t=${Date.now()}`;
     }
 
-    // Chat summary fallback
     if (chat.otherParticipantAvatar) {
       return `http://localhost:8080${chat.otherParticipantAvatar}?t=${Date.now()}`;
     }
@@ -107,7 +167,6 @@ export default function ChatList() {
   }, [liveUpdates, friends]);
 
   const getFriendAvatarUrl = useCallback((username: string, profilePicture: string | null): string | null => {
-    // Live update wins
     if (liveUpdates[username]) return liveUpdates[username];
     if (profilePicture) return `http://localhost:8080${profilePicture}?t=${Date.now()}`;
     return null;
@@ -173,51 +232,17 @@ export default function ChatList() {
               const online = !isGroup && isOnline(chat.otherParticipantUsername || '');
 
               return (
-                <button
+                // ✅ ChatItem handles its own typing state per chat
+                <ChatItem
                   key={chat.chatId}
+                  chat={chat}
+                  chatName={chatName}
+                  isGroup={isGroup}
+                  avatarUrl={avatarUrl}
+                  online={online}
+                  isSelected={selectedChatId === chat.chatId}
                   onClick={() => handleChatClick(chat)}
-                  className={`w-full text-left p-4 border-b border-zinc-800 hover:bg-zinc-800/50 transition ${
-                    selectedChatId === chat.chatId ? 'bg-zinc-800' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar
-                      chat={chat}
-                      size={10}
-                      avatarUrl={avatarUrl}
-                      online={online}
-                      chatName={chatName}
-                      isGroup={isGroup}
-                    />
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center">
-                        <p className="text-white text-sm font-medium truncate">
-                          {chatName}
-                        </p>
-                        {chat.lastMessageAt && (
-                          <p className="text-zinc-500 text-xs flex-shrink-0 ml-2">
-                            {new Date(chat.lastMessageAt).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex justify-between items-center">
-                        <p className="text-zinc-500 text-xs truncate">
-                          {chat.lastMessage || 'No messages yet'}
-                        </p>
-                        {chat.unreadCount > 0 && selectedChatId !== chat.chatId && (
-                          <span className="ml-2 bg-green-500 text-white text-xs rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center flex-shrink-0">
-                            {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </button>
+                />
               );
             })}
           </div>

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store';
 
@@ -11,6 +11,8 @@ import {
 } from '../../store/slices/chat.slice';
 
 import { trackOptimisticMessage } from '../../socket/message.events';
+import { socketClient } from '../../socket/socket.client';
+
 import VueWrapper from '../../vue/VueWrapper';
 
 import {
@@ -26,7 +28,11 @@ interface Props {
   setPendingUpload: (upload: PreparedUpload | null) => void;
 }
 
-export default function MessageInput({ pendingUpload, setPendingUpload }: Props) {
+export default function MessageInput({
+  pendingUpload,
+  setPendingUpload
+}: Props) {
+
   const dispatch = useDispatch<AppDispatch>();
 
   const [text, setText] = useState('');
@@ -36,43 +42,139 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedChat = useSelector((state: RootState) => state.chat.selectedChat);
-  const { user } = useSelector((state: RootState) => state.auth);
+  // ✅ TYPING
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
+
+  const selectedChat = useSelector(
+    (state: RootState) => state.chat.selectedChat
+  );
+
+  const { user } = useSelector(
+    (state: RootState) => state.auth
+  );
 
   const handleFile = useCallback(async (file: File) => {
     setUploadError(null);
+
     try {
-      if (pendingUpload?.previewUrl) revokePreview(pendingUpload.previewUrl);
+
+      if (pendingUpload?.previewUrl) {
+        revokePreview(pendingUpload.previewUrl);
+      }
+
       const prepared = await prepareUpload(file);
+
       setPendingUpload(prepared);
+
     } catch (err: any) {
-      setUploadError(err.message || 'Failed to load file');
-      setTimeout(() => setUploadError(null), 3000);
+
+      setUploadError(
+        err.message || 'Failed to load file'
+      );
+
+      setTimeout(() => {
+        setUploadError(null);
+      }, 3000);
     }
+
   }, [pendingUpload, setPendingUpload]);
 
   const clearPending = () => {
-    if (pendingUpload?.previewUrl) revokePreview(pendingUpload.previewUrl);
+
+    if (pendingUpload?.previewUrl) {
+      revokePreview(pendingUpload.previewUrl);
+    }
+
     setPendingUpload(null);
   };
 
+  // ✅ SEND TYPING
+  const sendTyping = () => {
+
+    if (
+      !selectedChat ||
+      !socketClient.connected
+    ) {
+      return;
+    }
+
+    socketClient.publish({
+      destination: '/app/chat.typing',
+
+      body: JSON.stringify({
+        chatId: selectedChat.chatId,
+        username: user?.username
+      })
+    });
+  };;
+
+  // ✅ SEND STOP TYPING
+  const sendStopTyping = () => {
+
+    if (
+      !selectedChat ||
+      !socketClient.connected
+    ) {
+      return;
+    }
+
+    socketClient.publish({
+      destination: '/app/chat.stopTyping',
+
+      body: JSON.stringify({
+        chatId: selectedChat.chatId,
+        username: user?.username
+      })
+    });
+
+    isTypingRef.current = false;
+  };
+
+  // ✅ HANDLE TYPING
+  const handleTyping = (value: string) => {
+
+    setText(value);
+
+    if (!selectedChat) {
+      return;
+    }
+
+    // ✅ SEND TYPING EVERY KEYSTROKE
+    sendTyping();
+
+    // RESET STOP TIMER
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // STOP ONLY AFTER USER REALLY STOPS
+    typingTimeoutRef.current = setTimeout(() => {
+      sendStopTyping();
+    }, 1000);
+  };
+
   const handleSend = async () => {
+
     if (!selectedChat) return;
+
     if (!text.trim() && !pendingUpload) return;
 
-    // Snapshot everything before clearing state
+    // ✅ STOP TYPING IMMEDIATELY
+    sendStopTyping();
+
+    // Snapshot before clearing
     const content = text.trim();
+
     const uploadSnapshot = pendingUpload;
 
-    // ✅ Clear inputs immediately so UI feels responsive
+    // Clear UI instantly
     setText('');
+
     setPendingUpload(null);
 
     const optimisticId = `temp-${crypto.randomUUID()}`;
 
-    // ✅ For file-only messages, content is empty string — that's fine,
-    //    trackOptimisticMessage now stores by optimisticId (not content),
-    //    so empty-content collisions are no longer a problem.
     const optimisticContent = content;
 
     const optimisticMessage = {
@@ -81,7 +183,9 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
       senderId: user?.id || '',
       senderUsername: user?.username || '',
       content: optimisticContent,
-      messageType: uploadSnapshot ? uploadSnapshot.uploadType : 'TEXT',
+      messageType: uploadSnapshot
+        ? uploadSnapshot.uploadType
+        : 'TEXT',
       status: 'SENT' as const,
       sentAt: new Date().toISOString(),
       deliveredAt: null,
@@ -97,7 +201,6 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
         fileType: uploadSnapshot.fileType,
         fileSizeBytes: uploadSnapshot.fileSizeBytes,
         mediaType: uploadSnapshot.uploadType,
-        // ✅ Use previewUrl so image/video bubbles render instantly
         storagePath: uploadSnapshot.previewUrl,
         url: uploadSnapshot.previewUrl,
         previewTitle: null,
@@ -106,22 +209,29 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
       } : null
     };
 
-    // ✅ Register the tracker BEFORE dispatching so the socket echo
-    //    handler can find it even if the response arrives very fast.
-    trackOptimisticMessage(selectedChat.chatId, optimisticContent, optimisticId);
+    trackOptimisticMessage(
+      selectedChat.chatId,
+      optimisticContent,
+      optimisticId
+    );
 
-    // ✅ Dispatch optimistic message BEFORE setUploading(true) so the
-    //    bubble appears in the same render tick as the send action.
-    dispatch(receiveMessage(optimisticMessage as any));
+    dispatch(
+      receiveMessage(optimisticMessage as any)
+    );
 
-    // Now show the uploading spinner on the send button
     setUploading(true);
 
     try {
-      const messageType = uploadSnapshot ? uploadSnapshot.uploadType : 'TEXT';
+
+      const messageType =
+        uploadSnapshot
+          ? uploadSnapshot.uploadType
+          : 'TEXT';
+
       const basePayload = {
         content: optimisticContent,
         messageType,
+
         ...(uploadSnapshot ? {
           fileData: uploadSnapshot.base64,
           fileName: uploadSnapshot.fileName,
@@ -130,51 +240,126 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
         } : {})
       };
 
-      if (selectedChat.type === 'PRIVATE' && selectedChat.otherParticipantUsername) {
-        const result = await dispatch(sendPrivateMessage({
-          receiverUsername: selectedChat.otherParticipantUsername,
-          ...basePayload
-        }));
-        if (sendPrivateMessage.fulfilled.match(result) && result.payload) {
-          dispatch(updateMessageStatus({ messageId: optimisticId, status: 'DELIVERED' }));
+      // PRIVATE
+      if (
+        selectedChat.type === 'PRIVATE' &&
+        selectedChat.otherParticipantUsername
+      ) {
+
+        const result =
+          await dispatch(
+            sendPrivateMessage({
+              receiverUsername:
+                selectedChat.otherParticipantUsername,
+              ...basePayload
+            })
+          );
+
+        if (
+          sendPrivateMessage.fulfilled.match(result) &&
+          result.payload
+        ) {
+
+          dispatch(
+            updateMessageStatus({
+              messageId: optimisticId,
+              status: 'DELIVERED'
+            })
+          );
+
           const sentMsg = result.payload;
-          if (selectedChat.chatId.startsWith('temp-') && sentMsg.chatId) {
-            dispatch(promoteTempChat({
-              ...selectedChat,
-              chatId: sentMsg.chatId,
-              lastMessage: sentMsg.content,
-              lastMessageAt: sentMsg.sentAt,
-              unreadCount: 0
-            }));
+
+          if (
+            selectedChat.chatId.startsWith('temp-') &&
+            sentMsg.chatId
+          ) {
+
+            dispatch(
+              promoteTempChat({
+                ...selectedChat,
+                chatId: sentMsg.chatId,
+                lastMessage: sentMsg.content,
+                lastMessageAt: sentMsg.sentAt,
+                unreadCount: 0
+              })
+            );
           }
         }
+
+        // GROUP
       } else if (selectedChat.type === 'GROUP') {
-        await dispatch(sendGroupMessage({ chatId: selectedChat.chatId, ...basePayload }));
-        dispatch(updateMessageStatus({ messageId: optimisticId, status: 'DELIVERED' }));
+
+        await dispatch(
+          sendGroupMessage({
+            chatId: selectedChat.chatId,
+            ...basePayload
+          })
+        );
+
+        dispatch(
+          updateMessageStatus({
+            messageId: optimisticId,
+            status: 'DELIVERED'
+          })
+        );
       }
 
-      if (uploadSnapshot?.previewUrl) revokePreview(uploadSnapshot.previewUrl);
+      if (uploadSnapshot?.previewUrl) {
+        revokePreview(uploadSnapshot.previewUrl);
+      }
+
     } catch (err) {
-      console.error('Send failed:', err);
+
+      console.error(
+        'Send failed:',
+        err
+      );
+
     } finally {
+
       setUploading(false);
     }
   };
 
   const handleEmoji = (emoji: string) => {
+
     setText(prev => prev + emoji);
+
     setShowEmoji(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleKeyDown = (
+    e: React.KeyboardEvent
+  ) => {
+
+    if (
+      e.key === 'Enter' &&
+      !e.shiftKey
+    ) {
+
       e.preventDefault();
+
       handleSend();
     }
   };
 
+  // ✅ CLEANUP
+  useEffect(() => {
+
+    return () => {
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      sendStopTyping();
+    };
+
+  }, []);
+
   return (
     <div className="relative">
+
       {uploadError && (
         <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg z-50">
           {uploadError}
@@ -187,36 +372,69 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
         </div>
       )}
 
-      {/* File Preview */}
+      {/* FILE PREVIEW */}
       {pendingUpload && (
         <div className="bg-black border-t border-yellow-500/20 px-4 py-3 flex items-center gap-3">
-          {pendingUpload.uploadType === 'IMAGE' && pendingUpload.previewUrl ? (
-            <img src={pendingUpload.previewUrl} alt="preview" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+
+          {pendingUpload.uploadType === 'IMAGE' &&
+            pendingUpload.previewUrl ? (
+
+            <img
+              src={pendingUpload.previewUrl}
+              alt="preview"
+              className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+            />
+
           ) : (
+
             <div className="w-16 h-16 rounded-lg bg-yellow-500/20 flex items-center justify-center text-3xl flex-shrink-0">
-              {getFileIcon(pendingUpload.fileType)}
+              {getFileIcon(
+                pendingUpload.fileType
+              )}
             </div>
           )}
+
           <div className="flex-1 min-w-0">
-            <p className="text-yellow-400 text-sm truncate font-medium">{pendingUpload.fileName}</p>
-            <p className="text-yellow-500/70 text-xs">{formatFileSize(pendingUpload.fileSizeBytes)}</p>
+
+            <p className="text-yellow-400 text-sm truncate font-medium">
+              {pendingUpload.fileName}
+            </p>
+
+            <p className="text-yellow-500/70 text-xs">
+              {formatFileSize(
+                pendingUpload.fileSizeBytes
+              )}
+            </p>
+
           </div>
-          <button onClick={clearPending} className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0">✕</button>
+
+          <button
+            onClick={clearPending}
+            className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0"
+          >
+            ✕
+          </button>
+
         </div>
       )}
 
       <div className="h-16 bg-black border-t border-yellow-500/20 flex items-center gap-2 px-4">
+
         <button
           onClick={() => setShowEmoji(prev => !prev)}
           className="text-2xl hover:scale-110 transition flex-shrink-0"
           disabled={!selectedChat}
-        >😀</button>
+        >
+          😀
+        </button>
 
         <button
           onClick={() => fileInputRef.current?.click()}
           className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0"
           disabled={!selectedChat || uploading}
-        >📎</button>
+        >
+          📎
+        </button>
 
         <input
           ref={fileInputRef}
@@ -224,32 +442,63 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
           className="hidden"
           accept="*"
           onChange={e => {
+
             const file = e.target.files?.[0];
-            if (file) handleFile(file);
+
+            if (file) {
+              handleFile(file);
+            }
+
             e.target.value = '';
           }}
         />
 
         <input
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={e => handleTyping(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedChat ? 'Type message...' : 'Select a chat to start messaging'}
+          placeholder={
+            selectedChat
+              ? 'Type message...'
+              : 'Select a chat to start messaging'
+          }
           disabled={!selectedChat || uploading}
           className="flex-1 p-3 rounded-xl bg-zinc-800 text-yellow-400 outline-none disabled:opacity-50 placeholder:text-zinc-500"
         />
 
         <button
           onClick={handleSend}
-          disabled={!selectedChat || uploading || (!text.trim() && !pendingUpload)}
+          disabled={
+            !selectedChat ||
+            uploading ||
+            (!text.trim() && !pendingUpload)
+          }
           className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded-xl disabled:opacity-50 transition flex-shrink-0 font-medium"
         >
+
           {uploading ? (
-            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-              <path fill="currentColor" d="M4 12a8 8 0 018-8v8z" className="opacity-75" />
+            <svg
+              className="animate-spin w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+                className="opacity-25"
+              />
+
+              <path
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v8z"
+                className="opacity-75"
+              />
             </svg>
           ) : 'Send'}
+
         </button>
       </div>
     </div>
