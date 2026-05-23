@@ -23,3 +23,12 @@ export interface FriendRequestActionPayload {
   requestId: string;
   action: 'ACCEPT' | 'REJECT';
 }
+
+// ── New: result from phone number search ──────────────────────────────────────
+export interface UserSearchResult {
+  userId: string;
+  username: string;
+  phoneNumber: string;
+  profilePicture: string | null;
+  alreadyFriend: boolean;
+}

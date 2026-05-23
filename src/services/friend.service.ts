@@ -3,7 +3,8 @@ import type {
   FriendSummary,
   FriendRequest,
   SendFriendRequestPayload,
-  FriendRequestActionPayload
+  FriendRequestActionPayload,
+  UserSearchResult,
 } from '../types/friend.types';
 
 interface ApiResponse<T> {
@@ -25,4 +26,20 @@ export const friendService = {
 
   respondToRequest: (data: FriendRequestActionPayload) =>
     api.post<ApiResponse<FriendRequest>>('/api/v1/users/friends/accept', data),
+
+  // ── Search user by phone ──────────────────────────────────────────────────
+  searchByPhone: (phone: string) =>
+    api.get<ApiResponse<UserSearchResult>>(
+      `/api/v1/users/friends/search-by-phone`,
+      {
+        params: { phone },
+      }
+    ),
+
+  // ── Direct add friend ─────────────────────────────────────────────────────
+  addDirectFriend: (phoneNumber: string) =>
+    api.post<ApiResponse<FriendSummary>>(
+      '/api/v1/users/friends/add-direct',
+      { phoneNumber }
+    ),
 };

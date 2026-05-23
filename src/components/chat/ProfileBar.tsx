@@ -67,45 +67,12 @@ export default function ProfileBar() {
           >
             ➕
           </button>
-
-          <div className="relative">
-            <button
-              onClick={() => setShowRequests(prev => !prev)}
-              className="text-zinc-400 hover:text-white transition text-xl"
-              title="Friend Requests"
-            >
-              🔔
-            </button>
-
-            {pendingRequests.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center">
-                {pendingRequests.length}
-              </span>
-            )}
-          </div>
-
-          <button
-            onClick={() => setShowProfile(true)}
-            className="text-zinc-400 hover:text-white transition"
-            title="Settings / Profile"
-          >
-            ⚙️
-          </button>
         </div>
       </div>
 
       {/* Pending Requests Dropdown */}
       {showRequests && (
         <div className="absolute top-16 right-0 w-80 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto">
-          <div className="p-3 border-b border-zinc-700 flex justify-between items-center">
-            <p className="text-white font-semibold text-sm">Friend Requests</p>
-            <button
-              onClick={() => setShowRequests(false)}
-              className="text-zinc-500 hover:text-white text-xs"
-            >
-              ✕
-            </button>
-          </div>
 
           {pendingRequests.length === 0 ? (
             <p className="text-zinc-500 text-sm p-4 text-center">No pending requests</p>
@@ -120,20 +87,6 @@ export default function ProfileBar() {
                     <p className="text-white text-sm font-medium">{request.requesterUsername}</p>
                     <p className="text-zinc-500 text-xs">{request.requesterPhone}</p>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleRespond(request.requestId, 'ACCEPT')}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-1.5 rounded-lg transition"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => handleRespond(request.requestId, 'REJECT')}
-                    className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white text-sm py-1.5 rounded-lg transition"
-                  >
-                    Reject
-                  </button>
                 </div>
               </div>
             ))
