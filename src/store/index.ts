@@ -1,6 +1,5 @@
 /**
- * store/index.ts  — updated version
- * Add profileReducer and call connectAvatarEvents after login.
+ * store/index.ts
  */
 import { configureStore } from '@reduxjs/toolkit';
 import chatReducer, {
@@ -11,17 +10,19 @@ import authReducer from './slices/auth.slice';
 import friendReducer from './slices/friend.slice';
 import groupReducer from './slices/group.slice';
 import callReducer from './slices/call.slice';
-import profileReducer from './slices/profile.slice'; // ← ADD
+import profileReducer from './slices/profile.slice';
+import uiReducer from './slices/ui.slice'; // ← ADD
 import { initMessageEvents } from '../socket/message.events';
 
 export const store = configureStore({
   reducer: {
-    chat: chatReducer,
-    auth: authReducer,
-    friend: friendReducer,
-    group: groupReducer,
-    call: callReducer,
-    profile: profileReducer, // ← ADD
+    chat:    chatReducer,
+    auth:    authReducer,
+    friend:  friendReducer,
+    group:   groupReducer,
+    call:    callReducer,
+    profile: profileReducer,
+    ui:      uiReducer, // ← ADD
   },
 });
 

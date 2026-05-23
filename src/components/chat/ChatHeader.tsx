@@ -8,9 +8,11 @@ import { sendOffer } from '../../webrtc/signaling.service';
 import { getAudioStream } from '../../webrtc/media.service';
 import TypingIndicator from './TypingIndicator';
 import { useTypingUsers } from '../../hooks/useTyping';
+import WallpaperSettings from '../profile/WallpaperSettings';
 
 export default function ChatHeader() {
   const [calling, setCalling] = useState(false);
+  const [showWallpaper, setShowWallpaper] = useState(false);
 
   const selectedChat = useSelector(
     (state: RootState) => state.chat.selectedChat
@@ -24,7 +26,6 @@ export default function ChatHeader() {
     (state: RootState) => state.friend.friends
   );
 
-  // ✅ Use new per-chat typing users instead of old single typingUser
   const typingUsers = useTypingUsers(selectedChat?.chatId ?? null);
   const isTyping = typingUsers.length > 0;
 
@@ -77,6 +78,13 @@ export default function ChatHeader() {
         />
       )}
 
+      {/* Wallpaper panel — slides in from the right */}
+      {showWallpaper && selectedChat && (
+        <div className="absolute top-16 right-0 w-72 h-[calc(100%-4rem)] z-40 bg-zinc-950 border-l border-zinc-800 shadow-2xl flex flex-col">
+          <WallpaperSettings onClose={() => setShowWallpaper(false)} />
+        </div>
+      )}
+
       <div className="h-16 bg-black border-b border-yellow-500/20 flex items-center justify-between px-4">
 
         <div className="flex items-center gap-3">
@@ -95,7 +103,6 @@ export default function ChatHeader() {
                   {chatName?.charAt(0).toUpperCase() || '?'}
                 </div>
               )}
-
               <div
                 className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black ${
                   online ? 'bg-green-500' : 'bg-zinc-600'
@@ -108,8 +115,6 @@ export default function ChatHeader() {
             <p className="text-yellow-400 font-medium">
               {chatName || 'Select a chat'}
             </p>
-
-            {/* ✅ Show animated typing indicator below name, or Online/Offline */}
             {isTyping ? (
               <TypingIndicator variant="inline" />
             ) : selectedChat && selectedChat.type === 'PRIVATE' ? (
@@ -120,8 +125,30 @@ export default function ChatHeader() {
           </div>
         </div>
 
+        {/* Right side actions */}
         {selectedChat && (
-          <CallButton onClick={handleCall} />
+          <div className="flex items-center gap-2">
+
+            {/* Wallpaper button */}
+            <button
+              onClick={() => setShowWallpaper(prev => !prev)}
+              title="Change wallpaper"
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors
+                ${showWallpaper
+                  ? 'bg-yellow-400 text-black'
+                  : 'text-yellow-500/60 hover:text-yellow-400 hover:bg-zinc-800'
+                }`}
+            >
+              {/* Wallpaper / image icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </button>
+
+            <CallButton onClick={handleCall} />
+          </div>
         )}
       </div>
     </>
