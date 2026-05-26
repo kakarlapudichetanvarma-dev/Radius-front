@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store';
 import { respondToFriendRequest, fetchFriends, fetchPendingRequests } from '../../store/slices/friend.slice';
 import { fetchChats } from '../../store/slices/chat.slice';
 import AddFriendModal from './AddFriendModal';
 import ProfileModal from './ProfileModal';
+import CreateGroupModal from './CreateGroupModal';
+import { Archive } from 'lucide-react';
+export function dispatchOpenArchived() {
+  window.dispatchEvent(new CustomEvent('open-archived-chats'));
+}
 
-export default function ProfileBar() {
+// ✅ memo — prevents re-render during sidebar drag since ProfileBar has no drag-related props
+const ProfileBar = memo(function ProfileBar() {
   const { user } = useSelector((state: RootState) => state.auth);
   const pendingRequests = useSelector((state: RootState) => state.friend.pendingRequests);
   const dispatch = useDispatch<AppDispatch>();
@@ -14,11 +20,13 @@ export default function ProfileBar() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
 
-  // ✅ Read directly from Redux — updates instantly when auth.user.profilePicture changes
-  const avatarSrc = user?.profilePicture
-    ? `http://localhost:8080${user.profilePicture}?t=${Date.now()}`
-    : null;
+  // ✅ useMemo — only recomputes when profilePicture actually changes, not on every render
+  const avatarSrc = useMemo(
+    () => user?.profilePicture ? `http://localhost:8080${user.profilePicture}` : null,
+    [user?.profilePicture]
+  );
 
   const handleRespond = async (requestId: string, action: 'ACCEPT' | 'REJECT') => {
     await dispatch(respondToFriendRequest({ requestId, action }));
@@ -31,6 +39,7 @@ export default function ProfileBar() {
     <>
       {showAddFriend && <AddFriendModal onClose={() => setShowAddFriend(false)} />}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
+      {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
 
       <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
@@ -59,7 +68,26 @@ export default function ProfileBar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* 🗄️ Archived Chats */}
+         <button
+  onClick={dispatchOpenArchived}
+  className="text-zinc-400 hover:text-white transition"
+  title="Archived Chats"
+>
+  <Archive size={20} />
+</button>
+
+          {/* 👥 New Group Chat */}
+          <button
+            onClick={() => setShowCreateGroup(true)}
+            className="text-zinc-400 hover:text-white transition text-lg"
+            title="New Group Chat"
+          >
+            👥
+          </button>
+
+          {/* ➕ Add Friend */}
           <button
             onClick={() => setShowAddFriend(true)}
             className="text-zinc-400 hover:text-white transition text-xl"
@@ -73,7 +101,6 @@ export default function ProfileBar() {
       {/* Pending Requests Dropdown */}
       {showRequests && (
         <div className="absolute top-16 right-0 w-80 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto">
-
           {pendingRequests.length === 0 ? (
             <p className="text-zinc-500 text-sm p-4 text-center">No pending requests</p>
           ) : (
@@ -95,4 +122,6 @@ export default function ProfileBar() {
       )}
     </>
   );
-}
+});
+
+export default ProfileBar;

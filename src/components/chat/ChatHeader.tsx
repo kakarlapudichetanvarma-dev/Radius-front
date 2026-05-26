@@ -90,26 +90,54 @@ export default function ChatHeader() {
         <div className="flex items-center gap-3">
 
           {/* Avatar */}
-          {selectedChat && selectedChat.type === 'PRIVATE' && (
-            <div className="relative">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={chatName || ''}
-                  className="w-10 h-10 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold">
-                  {chatName?.charAt(0).toUpperCase() || '?'}
-                </div>
-              )}
-              <div
-                className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black ${
-                  online ? 'bg-green-500' : 'bg-zinc-600'
-                }`}
-              />
-            </div>
-          )}
+          {selectedChat && (
+
+  <div className="relative">
+
+    {selectedChat.type === 'GROUP' ? (
+
+      selectedChat.groupInfo?.profilePicture ? (
+
+        <img
+          src={selectedChat.groupInfo.profilePicture}
+          alt={chatName || ''}
+          className="w-10 h-10 rounded-full object-cover"
+        />
+
+      ) : (
+
+        <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold">
+          👥
+        </div>
+
+      )
+
+    ) : avatarUrl ? (
+
+      <img
+        src={avatarUrl}
+        alt={chatName || ''}
+        className="w-10 h-10 rounded-full object-cover"
+      />
+
+    ) : (
+
+      <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold">
+        {chatName?.charAt(0).toUpperCase() || '?'}
+      </div>
+
+    )}
+
+    {selectedChat.type === 'PRIVATE' && (
+      <div
+        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black ${
+          online ? 'bg-green-500' : 'bg-zinc-600'
+        }`}
+      />
+    )}
+
+  </div>
+)}
 
           <div>
             <p className="text-yellow-400 font-medium">

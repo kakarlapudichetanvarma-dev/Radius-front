@@ -11,12 +11,13 @@ interface ChatState {
   loadingChats: boolean;
   loadingMessages: boolean;
   typingUser: string | null;
-  typingUsers: Record<string, string[]>; // ✅ NEW: chatId -> [usernames currently typing]
+  typingUsers: Record<string, string[]>;
   onlineUsers: string[];
   error: string | null;
   chatClosedAt: Record<string, string>;
   _optimisticAtFetchStart: Message[];
   _locallyReadChatIds: string[];
+  archivedChatIds: string[]; // ✅ tracks which chats are archived for this user
 }
 
 function loadPersistedSelection(): {
@@ -80,12 +81,18 @@ const initialState: ChatState = {
   loadingChats: false,
   loadingMessages: false,
   typingUser: null,
-  typingUsers: {}, // ✅ NEW
+  typingUsers: {},
   onlineUsers: [],
   error: null,
   chatClosedAt: {},
   _optimisticAtFetchStart: [],
   _locallyReadChatIds: loadPersistedReadList(),
+  archivedChatIds: (() => {
+    try {
+      const raw = localStorage.getItem('chat_archivedChatIds');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  })(),
 };
 
 export const fetchChats = createAsyncThunk(
@@ -206,16 +213,18 @@ const chatSlice = createSlice({
       state.selectedChat = null;
       state.messages = [];
       state.typingUser = null;
-      state.typingUsers = {}; // ✅ NEW
+      state.typingUsers = {};
       state.onlineUsers = [];
       state.error = null;
       state.chatClosedAt = {};
       state._optimisticAtFetchStart = [];
       state._locallyReadChatIds = [];
+      state.archivedChatIds = [];
       localStorage.removeItem('chat_selectedChatId');
       localStorage.removeItem('chat_selectedChat');
       localStorage.removeItem('chat_chats');
       localStorage.removeItem('chat_locallyReadChatIds');
+      localStorage.removeItem('chat_archivedChatIds');
     },
 
     receiveMessage: (state, action: PayloadAction<Message>) => {
@@ -314,11 +323,24 @@ const chatSlice = createSlice({
       if (msg) msg.isDeleted = true;
     },
 
+    // ✅ NEW: Apply an incoming edit from socket or after successful API call
+    applyMessageEdit: (
+      state,
+      action: PayloadAction<{ messageId: string; content: string; editedAt: string }>
+    ) => {
+      const { messageId, content, editedAt } = action.payload;
+      const msg = state.messages.find(m => m.id === messageId);
+      if (msg) {
+        msg.content = content;
+        msg.isEdited = true;
+        (msg as any).editedAt = editedAt;
+      }
+    },
+
     setTyping: (state, action: PayloadAction<string | null>) => {
       state.typingUser = action.payload;
     },
 
-    // ✅ NEW: Add a user to the typing list for a specific chat
     setUserTypingInChat: (
       state,
       action: PayloadAction<{ chatId: string; username: string }>
@@ -332,7 +354,6 @@ const chatSlice = createSlice({
       }
     },
 
-    // ✅ NEW: Remove a user from the typing list for a specific chat
     clearUserTypingInChat: (
       state,
       action: PayloadAction<{ chatId: string; username: string }>
@@ -343,7 +364,6 @@ const chatSlice = createSlice({
       }
     },
 
-    // ✅ NEW: Wipe all typing state for a chat (used on unsubscribe)
     clearAllTypingInChat: (state, action: PayloadAction<string>) => {
       delete state.typingUsers[action.payload];
     },
@@ -439,6 +459,27 @@ const chatSlice = createSlice({
     resetUnread: (state, action: PayloadAction<string>) => {
       const chat = state.chats.find(c => c.chatId === action.payload);
       if (chat) chat.unreadCount = 0;
+    },
+
+    // ✅ Push unarchived chat back into sidebar instantly + remove from archivedChatIds
+    unarchiveChat: (state, action: PayloadAction<ChatSummary>) => {
+      const exists = state.chats.some(c => c.chatId === action.payload.chatId);
+      if (!exists) {
+        state.chats.unshift(action.payload);
+        localStorage.setItem('chat_chats', JSON.stringify(state.chats));
+      }
+      state.archivedChatIds = state.archivedChatIds.filter(id => id !== action.payload.chatId);
+      localStorage.setItem('chat_archivedChatIds', JSON.stringify(state.archivedChatIds));
+    },
+
+    // ✅ Mark chat as archived — remove from sidebar and track in archivedChatIds
+    markChatArchived: (state, action: PayloadAction<string>) => {
+      state.chats = state.chats.filter(c => c.chatId !== action.payload);
+      if (!state.archivedChatIds.includes(action.payload)) {
+        state.archivedChatIds.push(action.payload);
+        localStorage.setItem('chat_archivedChatIds', JSON.stringify(state.archivedChatIds));
+        localStorage.setItem('chat_chats', JSON.stringify(state.chats));
+      }
     },
   },
 
@@ -580,6 +621,7 @@ export const {
   deleteOptimisticById,
   markAllMessagesRead,
   deleteMessageLocally,
+  applyMessageEdit,
   setTyping,
   setUserTypingInChat,
   clearUserTypingInChat,
@@ -593,6 +635,8 @@ export const {
   promoteTempChat,
   incrementUnread,
   resetUnread,
+  unarchiveChat,
+  markChatArchived,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
