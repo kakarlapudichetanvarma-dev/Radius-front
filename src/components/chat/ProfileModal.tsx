@@ -224,13 +224,6 @@ export default function ProfileModal({
                 : 'Profile'}
             </h2>
 
-            <button
-              onClick={onClose}
-              className="text-zinc-500 hover:text-white transition text-xl leading-none"
-            >
-              ✕
-            </button>
-
           </div>
 
           <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">

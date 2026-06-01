@@ -93,7 +93,7 @@ const ProfileBar = memo(function ProfileBar() {
             className="text-zinc-400 hover:text-white transition text-xl"
             title="Add Friend"
           >
-            ➕
+            👤+
           </button>
         </div>
       </div>
