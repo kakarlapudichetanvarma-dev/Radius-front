@@ -1,286 +1,414 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Eye, EyeOff, Shield, Zap, Lock, Users, Phone, Video, MoreVertical } from 'lucide-react';
 import { registerSchema } from '../schemas/register.schema';
 import { useRegister } from '../hooks/useRegister';
 import type { RegisterRequest } from '../types/auth.types';
 
+/* ─── constants ─── */
+
+const SMOOTH = [0.22, 1, 0.36, 1] as const;
+
+const STATS = [
+  { val: '<10ms',   label: 'Latency' },
+  { val: '256-bit', label: 'Encryption' },
+  { val: '99.9%',   label: 'Uptime' },
+] as const;
+
+const FEATURES = [
+  { icon: <Zap className="w-4 h-4" />,    label: 'Instant delivery' },
+  { icon: <Shield className="w-4 h-4" />, label: 'End-to-end encrypted' },
+  { icon: <Users className="w-4 h-4" />,  label: 'Team workspaces' },
+  { icon: <Lock className="w-4 h-4" />,   label: 'Access control' },
+] as const;
+
+const MESSAGES = [
+  { msg: "Just joined Radius! 🎉",          own: false, time: "09:41" },
+  { msg: "Welcome! It's super fast 🚀",      own: true,  time: "09:42" },
+  { msg: "Already love the UI 😍",           own: false, time: "09:42" },
+  { msg: "End-to-end encrypted too 🔒",      own: true,  time: "09:43" },
+] as const;
+
+const TRUST = [
+  { icon: <Shield className="w-3.5 h-3.5" />, text: 'E2E Encrypted' },
+  { icon: <Lock className="w-3.5 h-3.5" />,   text: 'Zero-knowledge' },
+  { icon: <Zap className="w-3.5 h-3.5" />,    text: 'SOC 2 Ready' },
+] as const;
+
+/* ─── sub-components ─── */
 
 function RadiusLogo() {
   return (
-    <>
-      <div className="relative w-9 h-9 flex items-center justify-center">
-
-        <div className="logo-wave absolute" />
-
-        <div
-          className="logo-wave absolute"
-          style={{ animationDelay: '1s' }}
-        />
-
-        <div
-          className="logo-wave absolute"
-          style={{ animationDelay: '2s' }}
-        />
-
-        <div
-          className="
-            w-3
-            h-3
-            bg-yellow-400
-            rounded-full
-            z-20
-            shadow-[0_0_10px_#facc15]
-          "
-        />
-
-      </div>
-
-      <style>{`
-        .logo-wave {
-          width: 12px;
-          height: 12px;
-          border: 1.5px solid #facc15;
-          border-radius: 9999px;
-          animation: logoRadar 3s linear infinite;
-        }
-
-        @keyframes logoRadar {
-          0% {
-            transform: scale(1);
-            opacity: .8;
-          }
-
-          100% {
-            transform: scale(3);
-            opacity: 0;
-          }
-        }
-      `}</style>
-    </>
+    <div className="relative w-9 h-9 flex items-center justify-center">
+      <div className="logo-wave absolute" />
+      <div className="logo-wave absolute" style={{ animationDelay: '1s' }} />
+      <div className="logo-wave absolute" style={{ animationDelay: '2s' }} />
+      <div className="w-3 h-3 bg-yellow-400 rounded-full z-20 shadow-[0_0_14px_#facc15]" />
+    </div>
   );
 }
 
+/* ─── main ─── */
 
 export default function RegisterPage() {
   const { register: registerUser, loading, error } = useRegister();
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
-    formState: { errors }
-  } = useForm<RegisterRequest>({
-    resolver: zodResolver(registerSchema)
-  });
+    formState: { errors },
+  } = useForm<RegisterRequest>({ resolver: zodResolver(registerSchema) });
 
-  const onSubmit = async (data: RegisterRequest) => {
-    await registerUser(data);
-  };
+  const onSubmit = async (data: RegisterRequest) => { await registerUser(data); };
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#050505] text-white flex overflow-hidden relative">
 
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="
-          w-full max-w-md
-          bg-zinc-950
-          border border-yellow-500/30
-          shadow-2xl shadow-yellow-500/10
-          p-8
-          rounded-2xl
-          space-y-5
-        "
+      {/* AMBIENT GLOWS */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-15%] left-[-10%] w-[700px] h-[700px] rounded-full blur-[140px] bg-yellow-400/4" />
+        <div className="absolute bottom-[-15%] right-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] bg-yellow-500/3" />
+        <div className="absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full blur-[130px] bg-yellow-400/3" />
+      </div>
+
+      {/* ═══════════════ LEFT PANEL ═══════════════ */}
+      <motion.div
+        initial={{ opacity: 0, x: -40 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 1, ease: SMOOTH }}
+        className="hidden lg:flex flex-col w-[55%] relative px-14 py-10 border-r border-yellow-400/8 overflow-hidden gap-8"
+        style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
       >
+        {/* Grid texture */}
+        <div className="absolute inset-0 matte-grid opacity-[0.07] pointer-events-none" />
 
-        {/* Radius Header */}
-        <div className="flex items-center justify-center gap-3">
+        {/* Radar rings */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {[350, 550, 750].map((size, i) => (
+            <motion.div
+              key={size}
+              animate={{ scale: [1, 1.14 + i * 0.08, 1], opacity: [0.07, 0.16, 0.07] }}
+              transition={{ duration: 6 + i * 2, repeat: Infinity, delay: i * 1.6, ease: 'easeInOut' }}
+              className="absolute top-[42%] left-[40%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-yellow-400/15"
+              style={{ width: size, height: size, willChange: 'transform, opacity' }}
+            />
+          ))}
+        </div>
+
+        {/* Logo */}
+        <div className="relative z-10 flex items-center gap-3">
           <RadiusLogo />
-
-          <span className="text-2xl font-bold tracking-wide text-yellow-400">
-            Radius
-          </span>
+          <span className="text-2xl font-bold tracking-wide text-yellow-400">Radius</span>
         </div>
 
-
-        {/* Heading */}
-        <h1 className="text-3xl font-bold text-center text-yellow-400">
-          Create Account
-        </h1>
-
-
-        {/* API Error */}
-        {error && (
-          <div
-            className="
-              bg-red-500/10
-              border border-red-500/40
-              text-red-400
-              rounded-lg
-              px-4
-              py-3
-              text-sm
-            "
-          >
-            {error}
-          </div>
-        )}
-
-
-        {/* Username */}
-        <div>
-          <input
-            {...register('username')}
-            placeholder="Enter username"
-            className="
-              w-full
-              p-3
-              rounded-lg
-              bg-zinc-900
-              border border-zinc-700
-              text-white
-              placeholder:text-zinc-500
-              focus:outline-none
-              focus:border-yellow-400
-              focus:ring-2
-              focus:ring-yellow-400/20
-              transition
-            "
-          />
-
-          {errors.username && (
-            <p className="text-red-400 text-sm mt-1">
-              {errors.username.message}
-            </p>
-          )}
-        </div>
-
-
-        {/* Email */}
-        <div>
-          <input
-            {...register('email')}
-            type="email"
-            placeholder="Enter your email"
-            className="
-              w-full
-              p-3
-              rounded-lg
-              bg-zinc-900
-              border border-zinc-700
-              text-white
-              placeholder:text-zinc-500
-              focus:outline-none
-              focus:border-yellow-400
-              focus:ring-2
-              focus:ring-yellow-400/20
-              transition
-            "
-          />
-
-          {errors.email && (
-            <p className="text-red-400 text-sm mt-1">
-              {errors.email.message}
-            </p>
-          )}
-        </div>
-
-
-        {/* Phone */}
-        <div>
-          <input
-            {...register('phoneNumber')}
-            type="tel"
-            placeholder="Enter phone number"
-            className="
-              w-full
-              p-3
-              rounded-lg
-              bg-zinc-900
-              border border-zinc-700
-              text-white
-              placeholder:text-zinc-500
-              focus:outline-none
-              focus:border-yellow-400
-              focus:ring-2
-              focus:ring-yellow-400/20
-              transition
-            "
-          />
-
-          {errors.phoneNumber && (
-            <p className="text-red-400 text-sm mt-1">
-              {errors.phoneNumber.message}
-            </p>
-          )}
-        </div>
-
-
-        {/* Password */}
-        <div>
-          <input
-            type="password"
-            {...register('password')}
-            placeholder="Password (min 8 characters)"
-            className="
-              w-full
-              p-3
-              rounded-lg
-              bg-zinc-900
-              border border-zinc-700
-              text-white
-              placeholder:text-zinc-500
-              focus:outline-none
-              focus:border-yellow-400
-              focus:ring-2
-              focus:ring-yellow-400/20
-              transition
-            "
-          />
-
-          {errors.password && (
-            <p className="text-red-400 text-sm mt-1">
-              {errors.password.message}
-            </p>
-          )}
-        </div>
-
-
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="
-            w-full
-            bg-yellow-400
-            hover:bg-yellow-500
-            text-black
-            font-bold
-            p-3
-            rounded-lg
-            transition-all
-            duration-300
-            disabled:bg-yellow-700
-            disabled:cursor-not-allowed
-          "
+        {/* Hero copy */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.2, ease: SMOOTH }}
+          className="relative z-10"
         >
-          {loading ? 'Creating Account...' : 'Register'}
-        </button>
+          <h2 className="text-5xl font-extrabold leading-[1.1] tracking-tight mb-3">
+            Join the next<br />
+            <span className="text-yellow-400">generation of chat.</span>
+          </h2>
+          <p className="text-zinc-400 text-base leading-relaxed max-w-sm">
+            Create your free account and connect with your team in seconds. Fast, private, and built for real-time.
+          </p>
+        </motion.div>
 
+        {/* Stats row */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.35, ease: SMOOTH }}
+          className="relative z-10 grid grid-cols-3 gap-3"
+        >
+          {STATS.map(({ val, label }) => (
+            <div key={label} className="p-4 rounded-2xl border border-yellow-400/12 bg-yellow-400/[0.03] text-center">
+              <div className="text-2xl font-extrabold text-yellow-400">{val}</div>
+              <div className="text-xs text-zinc-500 mt-1 uppercase tracking-widest">{label}</div>
+            </div>
+          ))}
+        </motion.div>
 
-        {/* Login Link */}
-        <p className="text-center text-zinc-400 text-sm">
-          Already have an account?{' '}
-          <Link
-            to="/login"
-            className="text-yellow-400 hover:text-yellow-300 hover:underline"
-          >
-            Login
-          </Link>
-        </p>
+        {/* Feature pills */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.45, ease: SMOOTH }}
+          className="relative z-10 flex flex-wrap gap-2"
+        >
+          {FEATURES.map(({ icon, label }) => (
+            <div key={label} className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/8 bg-white/[0.03] text-zinc-400 text-xs">
+              <span className="text-yellow-400">{icon}</span>
+              {label}
+            </div>
+          ))}
+        </motion.div>
 
-      </form>
+        {/* Chat preview mockup */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, delay: 0.55, ease: SMOOTH }}
+          className="relative z-10 flex-1 flex flex-col"
+        >
+          <div className="flex-1 rounded-2xl border border-yellow-400/12 bg-[#090909] overflow-hidden shadow-[0_0_60px_rgba(250,204,21,0.05)] flex flex-col">
 
+            {/* Chat header */}
+            <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-yellow-400/20 flex items-center justify-center text-yellow-400 font-bold text-sm">R</div>
+                <div>
+                  <p className="font-semibold text-sm">Radius Team</p>
+                  <p className="text-green-400 text-xs flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
+                    4 members online
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 text-zinc-600">
+                <Phone className="w-4 h-4" />
+                <Video className="w-4 h-4" />
+                <MoreVertical className="w-4 h-4" />
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 p-5 space-y-3 overflow-hidden">
+              {MESSAGES.map((m, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.8 + i * 0.12, ease: SMOOTH }}
+                  className={`flex ${m.own ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div className={`max-w-[72%] px-3.5 py-2.5 rounded-2xl text-sm leading-snug ${
+                    m.own
+                      ? 'bg-yellow-400 text-black font-medium rounded-br-sm'
+                      : 'bg-white/[0.06] text-zinc-200 rounded-bl-sm'
+                  }`}>
+                    {m.msg}
+                    <span className={`text-[10px] ml-2 ${m.own ? 'text-black/40' : 'text-zinc-600'}`}>{m.time}</span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Input bar */}
+            <div className="p-4 border-t border-white/5 bg-white/[0.02]">
+              <div className="h-10 rounded-full bg-white/[0.05] flex items-center px-4 text-zinc-600 text-sm gap-2">
+                <span className="flex-1">Message...</span>
+                <div className="w-6 h-6 rounded-full bg-yellow-400 flex items-center justify-center flex-shrink-0">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="black">
+                    <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Bottom tagline */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1, delay: 0.9 }}
+          className="relative z-10 text-zinc-600 text-xs"
+        >
+          Free forever · No credit card required · Setup in seconds
+        </motion.p>
+      </motion.div>
+
+      {/* ═══════════════ RIGHT PANEL ═══════════════ */}
+      <div className="flex-1 flex items-center justify-center px-8 py-10 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.2, ease: SMOOTH }}
+          className="w-full max-w-[400px] flex flex-col gap-6"
+          style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
+        >
+          {/* Mobile logo */}
+          <div className="flex lg:hidden items-center justify-center gap-3">
+            <RadiusLogo />
+            <span className="text-xl font-bold tracking-wide text-yellow-400">Radius</span>
+          </div>
+
+          {/* Heading */}
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight mb-1.5">Create account</h1>
+            <p className="text-zinc-500 text-sm">Free forever. Join thousands of teams on Radius.</p>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm"
+            >
+              <span className="mt-0.5 shrink-0">⚠</span>
+              <span>{error}</span>
+            </motion.div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+
+            {/* Username */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Username</label>
+              <input
+                {...register('username')}
+                placeholder="e.g. alexmorgan"
+                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-600 text-sm focus:outline-none focus:border-yellow-400/60 focus:bg-white/[0.06] transition-all duration-200"
+              />
+              {errors.username && (
+                <p className="text-red-400 text-xs">{errors.username.message}</p>
+              )}
+            </div>
+
+            {/* Email */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Email address</label>
+              <input
+                {...register('email')}
+                type="email"
+                placeholder="you@example.com"
+                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-600 text-sm focus:outline-none focus:border-yellow-400/60 focus:bg-white/[0.06] transition-all duration-200"
+              />
+              {errors.email && (
+                <p className="text-red-400 text-xs">{errors.email.message}</p>
+              )}
+            </div>
+
+            {/* Phone */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Phone number</label>
+              <input
+                {...register('phoneNumber')}
+                type="tel"
+                placeholder="+1 (555) 000-0000"
+                className="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-600 text-sm focus:outline-none focus:border-yellow-400/60 focus:bg-white/[0.06] transition-all duration-200"
+              />
+              {errors.phoneNumber && (
+                <p className="text-red-400 text-xs">{errors.phoneNumber.message}</p>
+              )}
+            </div>
+
+            {/* Password */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Password</label>
+              <div className="relative">
+                <input
+                  {...register('password')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Min. 8 characters"
+                  className="w-full px-4 py-3.5 pr-12 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-600 text-sm focus:outline-none focus:border-yellow-400/60 focus:bg-white/[0.06] transition-all duration-200"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-yellow-400 transition-colors duration-200"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-red-400 text-xs">{errors.password.message}</p>
+              )}
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="group w-full py-3.5 bg-yellow-400 hover:bg-yellow-300 disabled:opacity-60 disabled:cursor-not-allowed text-black font-bold rounded-xl text-sm transition-all duration-200 shadow-[0_0_30px_rgba(250,204,21,0.2)] hover:shadow-[0_0_45px_rgba(250,204,21,0.38)] hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Creating Account...
+                </>
+              ) : (
+                <>
+                  Create Free Account
+                  <span className="group-hover:translate-x-1 transition-transform duration-200">→</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-white/8" />
+            <span className="text-zinc-600 text-xs uppercase tracking-widest">secure signup</span>
+            <div className="flex-1 h-px bg-white/8" />
+          </div>
+
+          {/* Trust badges */}
+          <div className="grid grid-cols-3 gap-2">
+            {TRUST.map(({ icon, text }) => (
+              <div key={text} className="flex flex-col items-center gap-2 p-3 rounded-xl border border-white/6 bg-white/[0.02] text-center">
+                <span className="text-yellow-400">{icon}</span>
+                <span className="text-zinc-500 text-[10px] leading-tight">{text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Login link */}
+          <p className="text-center text-zinc-500 text-sm">
+            Already have an account?{' '}
+            <Link to="/login" className="text-yellow-400 font-semibold hover:text-yellow-300 transition-colors duration-200">
+              Sign in →
+            </Link>
+          </p>
+
+          {/* Fine print */}
+          <p className="text-center text-zinc-700 text-[11px] leading-relaxed">
+            By creating an account you agree to our{' '}
+            <Link to="/terms" className="hover:text-zinc-500 underline transition-colors">Terms</Link>
+            {' '}and{' '}
+            <Link to="/privacy" className="hover:text-zinc-500 underline transition-colors">Privacy Policy</Link>.
+          </p>
+        </motion.div>
+      </div>
+
+      <style>{`
+        .matte-grid {
+          background-image:
+            linear-gradient(rgba(250,204,21,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(250,204,21,0.05) 1px, transparent 1px);
+          background-size: 80px 80px;
+        }
+        .logo-wave {
+          width: 12px; height: 12px;
+          border: 1.5px solid #facc15;
+          border-radius: 9999px;
+          animation: logoRadar 3s linear infinite;
+          will-change: transform, opacity;
+        }
+        @keyframes logoRadar {
+          0%   { transform: scale(1);   opacity: 0.8; }
+          100% { transform: scale(3.5); opacity: 0;   }
+        }
+        * {
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
+        }
+      `}</style>
     </div>
   );
 }
