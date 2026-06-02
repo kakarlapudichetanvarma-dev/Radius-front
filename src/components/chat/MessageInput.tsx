@@ -223,14 +223,25 @@ export default function MessageInput({
 
     try {
 
+      const isLinkMessage =
+        /^https?:\/\/\S+$/i.test(optimisticContent);
+
       const messageType =
         uploadSnapshot
           ? uploadSnapshot.uploadType
-          : 'TEXT';
+          : isLinkMessage
+            ? 'LINK'
+            : 'TEXT';
 
       const basePayload = {
         content: optimisticContent,
         messageType,
+
+        ...(messageType === 'LINK'
+          ? {
+            url: optimisticContent
+          }
+          : {}),
 
         ...(uploadSnapshot ? {
           fileData: uploadSnapshot.base64,
@@ -418,89 +429,87 @@ export default function MessageInput({
         </div>
       )}
 
-      <div className="h-16 bg-black border-t border-yellow-500/20 flex items-center gap-2 px-4">
+      {selectedChat && (
+  <div className="h-16 bg-black border-t border-yellow-500/20 flex items-center gap-2 px-4">
 
-        <button
-          onClick={() => setShowEmoji(prev => !prev)}
-          className="text-2xl hover:scale-110 transition flex-shrink-0"
-          disabled={!selectedChat}
+    <button
+      onClick={() => setShowEmoji(prev => !prev)}
+      className="text-2xl hover:scale-110 transition flex-shrink-0"
+      disabled={!selectedChat}
+    >
+      😀
+    </button>
+
+    <button
+      onClick={() => fileInputRef.current?.click()}
+      className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0"
+      disabled={!selectedChat || uploading}
+    >
+      ✚
+    </button>
+
+    <input
+      ref={fileInputRef}
+      type="file"
+      className="hidden"
+      accept="*"
+      onChange={e => {
+
+        const file = e.target.files?.[0];
+
+        if (file) {
+          handleFile(file);
+        }
+
+        e.target.value = '';
+      }}
+    />
+
+    <input
+      value={text}
+      onChange={e => handleTyping(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder="Type message..."
+      disabled={!selectedChat || uploading}
+      className="flex-1 p-3 rounded-xl bg-zinc-800 text-yellow-400 outline-none disabled:opacity-50 placeholder:text-zinc-500"
+    />
+
+    <button
+      onClick={handleSend}
+      disabled={
+        !selectedChat ||
+        uploading ||
+        (!text.trim() && !pendingUpload)
+      }
+      className="bg-yellow-500 hover:bg-yellow-400 text-black w-11 h-11 rounded-full disabled:opacity-50 transition flex-shrink-0 font-medium flex items-center justify-center text-lg"
+    >
+
+      {uploading ? (
+        <svg
+          className="animate-spin w-4 h-4"
+          viewBox="0 0 24 24"
+          fill="none"
         >
-          😀
-        </button>
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+            className="opacity-25"
+          />
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="text-yellow-500/70 hover:text-yellow-400 text-xl transition flex-shrink-0"
-          disabled={!selectedChat || uploading}
-        >
-          📎
-        </button>
+          <path
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v8z"
+            className="opacity-75"
+          />
+        </svg>
+      ) : '➤'}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          accept="*"
-          onChange={e => {
-
-            const file = e.target.files?.[0];
-
-            if (file) {
-              handleFile(file);
-            }
-
-            e.target.value = '';
-          }}
-        />
-
-        <input
-          value={text}
-          onChange={e => handleTyping(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            selectedChat
-              ? 'Type message...'
-              : 'Select a chat to start messaging'
-          }
-          disabled={!selectedChat || uploading}
-          className="flex-1 p-3 rounded-xl bg-zinc-800 text-yellow-400 outline-none disabled:opacity-50 placeholder:text-zinc-500"
-        />
-
-        <button
-          onClick={handleSend}
-          disabled={
-            !selectedChat ||
-            uploading ||
-            (!text.trim() && !pendingUpload)
-          }
-          className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded-xl disabled:opacity-50 transition flex-shrink-0 font-medium"
-        >
-
-          {uploading ? (
-            <svg
-              className="animate-spin w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                className="opacity-25"
-              />
-
-              <path
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8z"
-                className="opacity-75"
-              />
-            </svg>
-          ) : 'Send'}
-
-        </button>
-      </div>
+    </button>
+  </div>
+)}
     </div>
   );
 }

@@ -22,7 +22,7 @@ function MessageTicks({ status }: { status: string }) {
 }
 
 function getFileIcon(fileType: string | null | undefined): string {
-  if (!fileType) return '📎';
+  if (!fileType) return '✚';
   if (fileType.includes('pdf')) return '📄';
   if (fileType.includes('word') || fileType.includes('doc')) return '📝';
   if (fileType.includes('excel') || fileType.includes('sheet')) return '📊';
@@ -30,7 +30,7 @@ function getFileIcon(fileType: string | null | undefined): string {
   if (fileType.includes('video')) return '🎥';
   if (fileType.includes('audio')) return '🎵';
   if (fileType.includes('text')) return '📃';
-  return '📎';
+  return '✚';
 }
 
 function formatFileSize(bytes: number | null | undefined): string {
@@ -116,7 +116,7 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: ContextMenuProps
 
   const handleCopy = () => {
     if (message.content) {
-      navigator.clipboard.writeText(message.content).catch(() => {});
+      navigator.clipboard.writeText(message.content).catch(() => { });
     }
     onClose();
   };
@@ -342,7 +342,7 @@ export default function MessageBubble({ message, isMe }: Props) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className={`flex ${isMe ? 'justify-end' : 'justify-start'} group relative`}
+        className={`flex ${isMe ? 'justify-end' : 'justify-start'} relative`}
       >
         {/* ── Down arrow button — appears on hover ── */}
         <div className={`relative flex items-start gap-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -350,15 +350,19 @@ export default function MessageBubble({ message, isMe }: Props) {
           {/* Bubble */}
           <div
             className={`
-              max-w-[70%] rounded-2xl relative overflow-hidden
-              ${message.messageType === 'IMAGE' ? '' : 'px-4 py-2'}
-              ${isMe ? 'bg-green-700 rounded-br-sm' : 'bg-zinc-800 rounded-bl-sm'}
-            `}
+  min-w-[80px] max-w-[350px] rounded-2xl relative overflow-hidden
+  ${message.messageType === 'IMAGE' ? '' : 'px-4 py-2'}
+  ${isMe ? 'bg-green-700 rounded-br-sm' : 'bg-zinc-800 rounded-bl-sm'}
+`}
           >
             {/* Sender name in group chats */}
-            {!isMe && message.senderUsername && (
-              <p className={`text-xs text-green-400 font-medium mb-1 ${message.messageType === 'IMAGE' ? 'px-3 pt-2' : ''}`}>
-                {message.senderUsername}
+            {/* Sender name in incoming messages */}
+            {!isMe && (
+              <p
+                className={`text-xs text-green-400 font-medium mb-1 ${message.messageType === 'IMAGE' ? 'px-3 pt-2' : ''
+                  }`}
+              >
+                {message.senderUsername?.trim() || 'Unknown User'}
               </p>
             )}
 
@@ -380,7 +384,11 @@ export default function MessageBubble({ message, isMe }: Props) {
               <>
                 {/* TEXT */}
                 {message.messageType === 'TEXT' && content && (
-                  <p className="text-white text-sm whitespace-pre-wrap break-words">{content}</p>
+                  <p  className="
+    text-white text-sm leading-5
+    whitespace-pre-wrap break-words
+    max-w-[35ch]
+  ">{content}</p>
                 )}
 
                 {/* IMAGE */}
@@ -490,34 +498,42 @@ export default function MessageBubble({ message, isMe }: Props) {
           </div>
 
           {/* ── Arrow button — shows on group hover ── */}
-          {!isEditing && (
-            <div className="relative self-start mt-2">
-              <button
-                onClick={() => setShowMenu(prev => !prev)}
-                className={`
-                  opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                  w-5 h-5 flex items-center justify-center rounded-full
-                  bg-zinc-700/80 hover:bg-zinc-600 text-zinc-300 text-xs
-                  ${isMe ? 'mr-1' : 'ml-1'}
-                `}
-                title="Message options"
-              >
-                ▾
-              </button>
+          {/* ── WhatsApp-style inside hover arrow ── */}
+{!isEditing && (
+  <div
+  className={`
+    absolute top-0 left-1 z-20
+    opacity-0 hover:opacity-100
+    transition-opacity duration-150
+  `}
+>
+    <button
+      onClick={() => setShowMenu(prev => !prev)}
+     className={`
+  opacity-0 hover:opacity-100 transition-all duration-150
+w-7 h-7 flex items-center justify-center
+text-zinc-200 hover:text-white
+text-[16px]
+bg-black/10 hover:bg-black/20
+rounded-full
+`}
+      title="Message options"
+    >
+      ▼
+    </button>
 
-              {/* Context menu */}
-              <AnimatePresence>
-                {showMenu && (
-                  <MessageContextMenu
-                    isMe={isMe}
-                    message={message}
-                    onClose={() => setShowMenu(false)}
-                    onEdit={() => setIsEditing(true)}
-                  />
-                )}
-              </AnimatePresence>
-            </div>
-          )}
+    <AnimatePresence>
+      {showMenu && (
+        <MessageContextMenu
+          isMe={isMe}
+          message={message}
+          onClose={() => setShowMenu(false)}
+          onEdit={() => setIsEditing(true)}
+        />
+      )}
+    </AnimatePresence>
+  </div>
+)}
         </div>
       </motion.div>
     </>

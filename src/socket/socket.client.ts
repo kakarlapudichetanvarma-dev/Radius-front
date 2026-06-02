@@ -10,15 +10,15 @@ export const socketClient = new Client({
 
   heartbeatOutgoing: 4000,
 
-  debug: () => {},
+  debug: () => { },
 
   beforeConnect: () => {
     const auth = storage.getAuth();
 
     socketClient.connectHeaders = auth?.token
       ? {
-          Authorization: `Bearer ${auth.token}`
-        }
+        Authorization: `Bearer ${auth.token}`
+      }
       : {};
   }
 });

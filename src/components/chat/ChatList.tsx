@@ -8,18 +8,59 @@ import TypingIndicator from './TypingIndicator';
 import { useIsTyping } from '../../hooks/useTyping';
 import { chatService } from '../../services/chat.service';
 import { Archive } from 'lucide-react';
+
+// ── Message Tick (WhatsApp-style) ─────────────────────────────────────────────
+
+interface MessageTickProps {
+  status: 'SENT' | 'DELIVERED' | 'READ' | null;
+}
+
+function MessageTick({ status }: MessageTickProps) {
+  if (!status) return null;
+
+  if (status === 'SENT') {
+    // Single grey tick
+    return (
+      <svg className="w-4 h-4 flex-shrink-0 text-zinc-500" viewBox="0 0 16 11" fill="none">
+        <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+
+  if (status === 'DELIVERED') {
+    // Double grey ticks
+    return (
+      <svg className="w-5 h-4 flex-shrink-0 text-zinc-500" viewBox="0 0 20 11" fill="none">
+        <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M6 5.5L10.5 10L20 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+
+  if (status === 'READ') {
+    // Double blue ticks
+    return (
+      <svg className="w-5 h-4 flex-shrink-0 text-blue-400" viewBox="0 0 20 11" fill="none">
+        <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M6 5.5L10.5 10L20 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+
+  return null;
+}
+
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
 interface AvatarProps {
   chat: ChatSummary;
   size?: number;
   avatarUrl: string | null;
-  online: boolean;
   chatName: string;
   isGroup: boolean;
 }
 
-function Avatar({ size = 10, avatarUrl, online, chatName, isGroup }: AvatarProps) {
+function Avatar({ size = 10, avatarUrl, chatName }: AvatarProps) {
   return (
     <div className="relative flex-shrink-0">
       {avatarUrl ? (
@@ -31,11 +72,8 @@ function Avatar({ size = 10, avatarUrl, online, chatName, isGroup }: AvatarProps
         />
       ) : (
         <div className={`w-${size} h-${size} rounded-full bg-zinc-700 flex items-center justify-center text-white font-medium`}>
-          {isGroup ? '👥' : chatName.charAt(0).toUpperCase() || '?'}
+          {chatName.charAt(0).toUpperCase() || '?'}
         </div>
-      )}
-      {!isGroup && (
-        <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-zinc-900 ${online ? 'bg-green-500' : 'bg-zinc-600'}`} />
       )}
     </div>
   );
@@ -51,6 +89,7 @@ interface ChatMenuProps {
 
 function ChatContextMenu({ chatId, onClose, onArchived }: ChatMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const dispatch = useDispatch<AppDispatch>();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -60,12 +99,9 @@ function ChatContextMenu({ chatId, onClose, onArchived }: ChatMenuProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
-  const dispatch = useDispatch<AppDispatch>();
-
   const handleArchive = async () => {
     try {
       await chatService.archiveChat(chatId);
-      // ✅ Remove from sidebar + track as archived in Redux immediately
       dispatch(markChatArchived(chatId));
       onArchived(chatId);
     } catch (err) {
@@ -100,15 +136,19 @@ interface ChatItemProps {
   chatName: string;
   isGroup: boolean;
   avatarUrl: string | null;
-  online: boolean;
   isSelected: boolean;
+  currentUserId: string | null;
   onClick: () => void;
   onArchived: (chatId: string) => void;
 }
 
-function ChatItem({ chat, chatName, isGroup, avatarUrl, online, isSelected, onClick, onArchived }: ChatItemProps) {
+function ChatItem({ chat, chatName, isGroup, avatarUrl, isSelected, currentUserId, onClick, onArchived }: ChatItemProps) {
   const isTyping = useIsTyping(chat.chatId);
   const [showMenu, setShowMenu] = useState(false);
+
+  // Only show ticks if the last message was sent by the current user
+  const isMyLastMessage = currentUserId && chat.lastMessageSenderId === currentUserId;
+  const tickStatus = isMyLastMessage ? chat.lastMessageStatus : null;
 
   return (
     <div className="relative group">
@@ -121,7 +161,6 @@ function ChatItem({ chat, chatName, isGroup, avatarUrl, online, isSelected, onCl
             chat={chat}
             size={10}
             avatarUrl={avatarUrl}
-            online={online}
             chatName={chatName}
             isGroup={isGroup}
           />
@@ -136,12 +175,20 @@ function ChatItem({ chat, chatName, isGroup, avatarUrl, online, isSelected, onCl
               )}
             </div>
 
-            <div className="flex justify-between items-center">
-              {isTyping ? (
-                <TypingIndicator variant="inline" />
-              ) : (
-                <p className="text-zinc-500 text-xs truncate">{chat.lastMessage || 'No messages yet'}</p>
-              )}
+            <div className="flex justify-between items-center mt-0.5">
+              <div className="flex items-center gap-1 min-w-0">
+                {/* Tick — shown inline before the message preview */}
+                {!isTyping && tickStatus && (
+                  <MessageTick status={tickStatus} />
+                )}
+                {isTyping ? (
+                  <TypingIndicator variant="inline" />
+                ) : (
+                  <p className="text-zinc-500 text-xs truncate">
+                    {chat.lastMessage || 'No messages yet'}
+                  </p>
+                )}
+              </div>
               {!isTyping && chat.unreadCount > 0 && !isSelected && (
                 <span className="ml-2 bg-green-500 text-white text-xs rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center flex-shrink-0">
                   {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
@@ -152,7 +199,6 @@ function ChatItem({ chat, chatName, isGroup, avatarUrl, online, isSelected, onCl
         </div>
       </button>
 
-      {/* ▾ arrow — bottom-right corner just above the border */}
       <div className="absolute bottom-0.5 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={e => { e.stopPropagation(); setShowMenu(prev => !prev); }}
@@ -185,7 +231,6 @@ interface ArchivedPanelProps {
 function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
   const dispatch = useDispatch<AppDispatch>();
   const friends = useSelector((state: RootState) => state.friend.friends);
-  const onlineUsers = useSelector((state: RootState) => state.chat.onlineUsers);
   const [archivedChats, setArchivedChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -204,22 +249,24 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
 
   const handleUnarchive = async (chatId: string) => {
     try {
-      // ✅ Find the chat BEFORE the API call
       const chat = archivedChats.find(c => c.chatId === chatId);
       await chatService.unarchiveChat(chatId);
-      // ✅ Remove from archived panel immediately
       setArchivedChats(prev => prev.filter(c => c.chatId !== chatId));
-      // ✅ Use imported action creator — dispatches correctly into Redux
-      if (chat) {
-        dispatch(unarchiveChat(chat));
-      }
+      if (chat) dispatch(unarchiveChat(chat));
     } catch (err) {
       console.error('Unarchive failed:', err);
     }
   };
 
   const getAvatarUrl = (chat: ChatSummary): string | null => {
-    if (chat.type !== 'PRIVATE') return null;
+    if (chat.type === 'GROUP') {
+      if (chat.groupInfo?.profilePicture) {
+        const pic = chat.groupInfo.profilePicture;
+        if (pic.startsWith('data:') || pic.startsWith('http')) return pic;
+        return `http://localhost:8080${pic}`;
+      }
+      return null;
+    }
     const username = chat.otherParticipantUsername;
     if (!username) return null;
     const friend = friends.find(f => f.username === username);
@@ -230,11 +277,6 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
 
   const getChatName = (chat: ChatSummary) =>
     chat.type === 'GROUP' ? (chat.groupInfo?.name || 'Group') : (chat.otherParticipantUsername || '?');
-
-  const isOnline = (chat: ChatSummary) => {
-    if (chat.type !== 'PRIVATE') return false;
-    return onlineUsers.includes(chat.otherParticipantUsername || '');
-  };
 
   const handleOpen = (chat: ChatSummary) => {
     dispatch(setSelectedChat(chat));
@@ -249,21 +291,14 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
       transition={{ type: 'tween', duration: 0.22 }}
       className="absolute inset-0 z-40 bg-zinc-950 flex flex-col"
     >
-      {/* Header */}
       <div className="h-16 border-b border-zinc-800 flex items-center px-4 gap-3 flex-shrink-0">
-        <button
-          onClick={onClose}
-          className="text-zinc-400 hover:text-white transition text-lg"
-        >
-          ←
-        </button>
+        <button onClick={onClose} className="text-zinc-400 hover:text-white transition text-lg">←</button>
         <div>
           <p className="text-white font-semibold">Archived Chats</p>
           <p className="text-zinc-500 text-xs">{archivedChats.length} chat{archivedChats.length !== 1 ? 's' : ''}</p>
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
@@ -271,7 +306,7 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
           </div>
         ) : archivedChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-zinc-500">
-            <Archive size={32} className="text-zinc-500 mb-2" />
+            <Archive size={32} className="mb-2" />
             <p className="text-sm">No archived chats</p>
           </div>
         ) : (
@@ -279,23 +314,12 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
             const chatName = getChatName(chat);
             const isGroup = chat.type === 'GROUP';
             const avatarUrl = getAvatarUrl(chat);
-            const online = isOnline(chat);
 
             return (
               <div key={chat.chatId} className="relative group border-b border-zinc-800 hover:bg-zinc-800/40 transition">
-                <button
-                  onClick={() => handleOpen(chat)}
-                  className="w-full text-left p-4"
-                >
+                <button onClick={() => handleOpen(chat)} className="w-full text-left p-4">
                   <div className="flex items-center gap-3">
-                    <Avatar
-                      chat={chat}
-                      size={10}
-                      avatarUrl={avatarUrl}
-                      online={online}
-                      chatName={chatName}
-                      isGroup={isGroup}
-                    />
+                    <Avatar chat={chat} size={10} avatarUrl={avatarUrl} chatName={chatName} isGroup={isGroup} />
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm font-medium truncate">{chatName}</p>
                       <p className="text-zinc-500 text-xs truncate">{chat.lastMessage || 'No messages yet'}</p>
@@ -307,12 +331,9 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
                     )}
                   </div>
                 </button>
-
-                {/* Unarchive button */}
                 <button
                   onClick={e => { e.stopPropagation(); handleUnarchive(chat.chatId); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-zinc-700 hover:bg-zinc-600 text-white px-2 py-1 rounded-lg"
-                  title="Unarchive"
                 >
                   Unarchive
                 </button>
@@ -336,18 +357,13 @@ export default function ChatList() {
 
   const chats = useSelector((state: RootState) => state.chat.chats);
   const friends = useSelector((state: RootState) => state.friend.friends);
-  const onlineUsers = useSelector((state: RootState) => state.chat.onlineUsers);
   const selectedChatId = useSelector((state: RootState) => state.chat.selectedChatId);
+  const currentUserId = useSelector((state: RootState) => (state.auth as any)?.user?.userId ?? null);
 
-  // Use localChats for optimistic archive removal, fall back to Redux chats
   const visibleChats = localChats ?? chats;
 
-  useEffect(() => {
-    // Sync localChats when Redux chats change externally
-    setLocalChats(null);
-  }, [chats]);
+  useEffect(() => { setLocalChats(null); }, [chats]);
 
-  // Listen for archive panel open event from ProfileBar
   useEffect(() => {
     const handler = () => setShowArchived(true);
     window.addEventListener('open-archived-chats', handler);
@@ -365,14 +381,15 @@ export default function ChatList() {
     return () => window.removeEventListener('profile-updated', handler as EventListener);
   }, []);
 
-  const isOnline = useCallback((username: string) => {
-    if (onlineUsers.includes(username)) return true;
-    const friend = friends.find(f => f.username === username);
-    return !!(friend && onlineUsers.includes(friend.userId));
-  }, [onlineUsers, friends]);
-
   const getAvatarUrl = useCallback((chat: ChatSummary): string | null => {
-    if (chat.type !== 'PRIVATE') return null;
+    if (chat.type === 'GROUP') {
+      if (chat.groupInfo?.profilePicture) {
+        const pic = chat.groupInfo.profilePicture;
+        if (pic.startsWith('data:') || pic.startsWith('http')) return pic;
+        return `http://localhost:8080${pic}`;
+      }
+      return null;
+    }
     const username = chat.otherParticipantUsername;
     if (!username) return null;
     if (liveUpdates[username]) return liveUpdates[username];
@@ -382,42 +399,13 @@ export default function ChatList() {
     return null;
   }, [liveUpdates, friends]);
 
-  const getFriendAvatarUrl = useCallback((username: string, profilePicture: string | null): string | null => {
-    if (liveUpdates[username]) return liveUpdates[username];
-    if (profilePicture) return `http://localhost:8080${profilePicture}?t=${Date.now()}`;
-    return null;
-  }, [liveUpdates]);
-
   const handleChatClick = (chat: ChatSummary) => {
     if (selectedChatId === chat.chatId) dispatch(setSelectedChat(null));
     else dispatch(setSelectedChat(chat));
   };
 
-  const handleFriendClick = (friendUsername: string) => {
-    const existingChat = chats.find(c => c.type === 'PRIVATE' && c.otherParticipantUsername === friendUsername);
-    if (existingChat) {
-      if (selectedChatId === existingChat.chatId) { dispatch(setSelectedChat(null)); return; }
-      dispatch(setSelectedChat(existingChat));
-    } else {
-      const tempChat: ChatSummary = {
-        chatId: `temp-${friendUsername}`,
-        type: 'PRIVATE',
-        otherParticipantUsername: friendUsername,
-        otherParticipantAvatar: null,
-        lastMessage: null,
-        lastMessageAt: null,
-        archived: false,
-        unreadCount: 0,
-        groupInfo: null
-      };
-      dispatch(setSelectedChat(tempChat));
-    }
-  };
-
-  // Optimistically remove archived chat from list
   const handleArchived = useCallback((chatId: string) => {
     setLocalChats(prev => (prev ?? chats).filter(c => c.chatId !== chatId));
-    // If the archived chat was selected, deselect it
     if (selectedChatId === chatId) dispatch(setSelectedChat(null));
   }, [chats, selectedChatId, dispatch]);
 
@@ -426,12 +414,8 @@ export default function ChatList() {
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col relative">
-
-      {/* Archived panel slides in over the list */}
       <AnimatePresence>
-        {showArchived && (
-          <ArchivedChatsPanel onClose={() => setShowArchived(false)} />
-        )}
+        {showArchived && <ArchivedChatsPanel onClose={() => setShowArchived(false)} />}
       </AnimatePresence>
 
       <div className="flex-1">
@@ -442,7 +426,6 @@ export default function ChatList() {
               const chatName = getChatName(chat);
               const isGroup = chat.type === 'GROUP';
               const avatarUrl = getAvatarUrl(chat);
-              const online = !isGroup && isOnline(chat.otherParticipantUsername || '');
 
               return (
                 <ChatItem
@@ -451,8 +434,8 @@ export default function ChatList() {
                   chatName={chatName}
                   isGroup={isGroup}
                   avatarUrl={avatarUrl}
-                  online={online}
                   isSelected={selectedChatId === chat.chatId}
+                  currentUserId={currentUserId}
                   onClick={() => handleChatClick(chat)}
                   onArchived={handleArchived}
                 />
@@ -463,13 +446,11 @@ export default function ChatList() {
 
         {chats.length === 0 && (
           <div className="flex flex-col items-center justify-center h-48 text-zinc-500">
-            <p className="text-sm">No chats or friends yet</p>
+            <p className="text-sm">No chats yet</p>
             <p className="text-xs mt-1">Add a friend to get started</p>
           </div>
         )}
       </div>
-
-
     </div>
   );
 }

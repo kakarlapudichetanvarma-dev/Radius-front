@@ -6,7 +6,9 @@ export interface ChatSummary {
   archived: boolean;
   unreadCount: number;
   otherParticipantUsername: string | null;
-  otherParticipantAvatar: string | null;  // ← added
+  otherParticipantAvatar: string | null;
+  lastMessageStatus: 'SENT' | 'DELIVERED' | 'READ' | null;
+  lastMessageSenderId: string | null;
   groupInfo: GroupInfo | null;
 }
 
@@ -79,13 +81,13 @@ export interface SendGroupMessageRequest {
   content?: string;
   messageType?: string;
   replyToId?: string;
-  fileData?: string;    // ← added
-  fileName?: string;    // ← added
-  fileType?: string;    // ← added
-  fileSizeBytes?: number; // ← added
-  url?: string;         // ← added
-  previewTitle?: string; // ← added
-  previewDesc?: string;  // ← added
+  fileData?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSizeBytes?: number;
+  url?: string;
+  previewTitle?: string;
+  previewDesc?: string;
 }
 
 export interface CreateGroupRequest {

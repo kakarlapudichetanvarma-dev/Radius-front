@@ -17,7 +17,38 @@ interface ChatState {
   chatClosedAt: Record<string, string>;
   _optimisticAtFetchStart: Message[];
   _locallyReadChatIds: string[];
-  archivedChatIds: string[]; // ✅ tracks which chats are archived for this user
+  archivedChatIds: string[];
+}
+
+// ✅ Strip any old URL-based group photos from a chat list so they don't cause 401s
+function sanitizeChats(chats: ChatSummary[]): ChatSummary[] {
+  return chats.map(chat => {
+    if (
+      chat.groupInfo?.profilePicture &&
+      !chat.groupInfo.profilePicture.startsWith('data:')
+    ) {
+      return {
+        ...chat,
+        groupInfo: { ...chat.groupInfo, profilePicture: null },
+      };
+    }
+    return chat;
+  });
+}
+
+// ✅ Strip old URL-based photo from a single chat (e.g. selectedChat)
+function sanitizeChat(chat: ChatSummary | null): ChatSummary | null {
+  if (!chat) return null;
+  if (
+    chat.groupInfo?.profilePicture &&
+    !chat.groupInfo.profilePicture.startsWith('data:')
+  ) {
+    return {
+      ...chat,
+      groupInfo: { ...chat.groupInfo, profilePicture: null },
+    };
+  }
+  return chat;
 }
 
 function loadPersistedSelection(): {
@@ -29,10 +60,16 @@ function loadPersistedSelection(): {
     const selectedChatId = localStorage.getItem('chat_selectedChatId');
     const selectedChatRaw = localStorage.getItem('chat_selectedChat');
     const chatsRaw = localStorage.getItem('chat_chats');
+
+    const rawChats = chatsRaw ? JSON.parse(chatsRaw) : [];
+    const rawSelectedChat = selectedChatRaw ? JSON.parse(selectedChatRaw) : null;
+
     return {
       selectedChatId: selectedChatId ?? null,
-      selectedChat: selectedChatRaw ? JSON.parse(selectedChatRaw) : null,
-      chats: chatsRaw ? JSON.parse(chatsRaw) : [],
+      // ✅ Sanitize selectedChat so stale URL photos don't reach <img> tags
+      selectedChat: sanitizeChat(rawSelectedChat),
+      // ✅ Sanitize all chats so stale URL photos don't reach <img> tags
+      chats: sanitizeChats(rawChats),
     };
   } catch {
     return { selectedChatId: null, selectedChat: null, chats: [] };
@@ -323,7 +360,12 @@ const chatSlice = createSlice({
       if (msg) msg.isDeleted = true;
     },
 
-    // ✅ NEW: Apply an incoming edit from socket or after successful API call
+    clearMessagesLocally: (state, action: PayloadAction<string>) => {
+      if (state.selectedChatId === action.payload) {
+        state.messages = [];
+      }
+    },
+
     applyMessageEdit: (
       state,
       action: PayloadAction<{ messageId: string; content: string; editedAt: string }>
@@ -418,6 +460,25 @@ const chatSlice = createSlice({
       });
     },
 
+    updateGroupAvatar: (
+      state,
+      action: PayloadAction<{ chatId: string; profilePicture: string }>
+    ) => {
+      // Update in chats list (sidebar)
+      const chat = state.chats.find(c => c.chatId === action.payload.chatId);
+      if (chat && chat.groupInfo) {
+        chat.groupInfo.profilePicture = action.payload.profilePicture;
+      }
+      // Update in selectedChat (chat header)
+      if (state.selectedChat?.chatId === action.payload.chatId && state.selectedChat.groupInfo) {
+        state.selectedChat.groupInfo.profilePicture = action.payload.profilePicture;
+      }
+      localStorage.setItem('chat_chats', JSON.stringify(state.chats));
+      if (state.selectedChat) {
+        localStorage.setItem('chat_selectedChat', JSON.stringify(state.selectedChat));
+      }
+    },
+
     promoteTempChat: (state, action: PayloadAction<ChatSummary>) => {
       state.chats = state.chats.filter(
         c =>
@@ -461,7 +522,6 @@ const chatSlice = createSlice({
       if (chat) chat.unreadCount = 0;
     },
 
-    // ✅ Push unarchived chat back into sidebar instantly + remove from archivedChatIds
     unarchiveChat: (state, action: PayloadAction<ChatSummary>) => {
       const exists = state.chats.some(c => c.chatId === action.payload.chatId);
       if (!exists) {
@@ -472,7 +532,18 @@ const chatSlice = createSlice({
       localStorage.setItem('chat_archivedChatIds', JSON.stringify(state.archivedChatIds));
     },
 
-    // ✅ Mark chat as archived — remove from sidebar and track in archivedChatIds
+    removeChat: (state, action: PayloadAction<string>) => {
+      state.chats = state.chats.filter(c => c.chatId !== action.payload);
+      if (state.selectedChatId === action.payload) {
+        state.selectedChatId = null;
+        state.selectedChat = null;
+        state.messages = [];
+        localStorage.removeItem('chat_selectedChatId');
+        localStorage.removeItem('chat_selectedChat');
+      }
+      localStorage.setItem('chat_chats', JSON.stringify(state.chats));
+    },
+
     markChatArchived: (state, action: PayloadAction<string>) => {
       state.chats = state.chats.filter(c => c.chatId !== action.payload);
       if (!state.archivedChatIds.includes(action.payload)) {
@@ -507,8 +578,22 @@ const chatSlice = createSlice({
             ? new Date(inMemory.lastMessageAt).getTime() : 0;
           const base = memoryTime > serverTime ? inMemory : serverChat;
 
+          // ✅ Always prefer the server's base64 photo over anything in memory.
+          // If server returns null, fall back to in-memory only if it's a valid base64.
+          const serverPhoto = serverChat.groupInfo?.profilePicture ?? null;
+          const memoryPhoto = inMemory?.groupInfo?.profilePicture ?? null;
+          const resolvedPhoto =
+            serverPhoto?.startsWith('data:') ? serverPhoto
+            : memoryPhoto?.startsWith('data:') ? memoryPhoto
+            : null;
+
+          const groupInfo = base.groupInfo
+            ? { ...base.groupInfo, profilePicture: resolvedPhoto }
+            : base.groupInfo;
+
           return {
             ...base,
+            groupInfo,
             lastMessage:
               base.lastMessage || serverChat.lastMessage ||
               inMemory.lastMessage || 'No messages yet',
@@ -621,6 +706,7 @@ export const {
   deleteOptimisticById,
   markAllMessagesRead,
   deleteMessageLocally,
+  clearMessagesLocally,
   applyMessageEdit,
   setTyping,
   setUserTypingInChat,
@@ -632,11 +718,13 @@ export const {
   addSystemMessage,
   updateChatLastMessage,
   updateChatAvatar,
+  updateGroupAvatar,
   promoteTempChat,
   incrementUnread,
   resetUnread,
   unarchiveChat,
   markChatArchived,
+  removeChat,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

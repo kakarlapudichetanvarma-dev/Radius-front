@@ -50,6 +50,20 @@ export const chatService = {
   markRead: (chatId: string) =>
     api.post<ApiResponse<null>>(`/api/v1/chat/chats/${chatId}/read`),
 
+  // ── Clear all messages for me (frontend + backend) ─────
+  clearChatForMe: (chatId: string) =>
+    api.delete<ApiResponse<null>>(`/api/v1/chat/chats/${chatId}/clear-for-me`),
+
+  // ── Block / Unblock ────────────────────────────────────
+  blockUser: (username: string) =>
+    api.post<ApiResponse<null>>(`/api/v1/chat/users/${username}/block`),
+
+  unblockUser: (username: string) =>
+    api.delete<ApiResponse<null>>(`/api/v1/chat/users/${username}/block`),
+
+  isUserBlocked: (username: string) =>
+    api.get<ApiResponse<boolean>>(`/api/v1/chat/users/${username}/block`),
+
   // ── Groups ─────────────────────────────────────────────
   createGroup: (data: CreateGroupRequest) =>
     api.post<ApiResponse<any>>('/api/v1/chat/groups', data),
@@ -57,6 +71,16 @@ export const chatService = {
   updateGroup: (groupId: string, data: { name?: string; description?: string; profilePicture?: string }) =>
     api.put<ApiResponse<any>>(`/api/v1/chat/groups/${groupId}`, data),
 
+  // Any member can update group photo
+  updateGroupPhoto: (groupId: string, photo: File) => {
+  const formData = new FormData();
+  formData.append('photo', photo);
+  return api.put<ApiResponse<any>>(
+    `/api/v1/chat/groups/${groupId}/photo`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+},
   getGroupMembers: (groupId: string) =>
     api.get<ApiResponse<GroupMember[]>>(`/api/v1/chat/groups/${groupId}/members`),
 
@@ -70,6 +94,12 @@ export const chatService = {
 
   promoteAdmin: (groupId: string, userId: string) =>
     api.post<ApiResponse<null>>(`/api/v1/chat/groups/${groupId}/admins/${userId}`),
+
+  exitGroup: (groupId: string) =>
+    api.delete<ApiResponse<null>>(`/api/v1/chat/groups/${groupId}/exit`),
+
+  deleteGroup: (groupId: string) =>
+    api.delete<ApiResponse<null>>(`/api/v1/chat/groups/${groupId}`),
 
   // ── Media ──────────────────────────────────────────────
   getChatImages: (chatId: string) =>

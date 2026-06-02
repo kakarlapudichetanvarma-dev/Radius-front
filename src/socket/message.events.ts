@@ -74,14 +74,6 @@ const findMatchingOptimisticId = (
   return null;
 };
 
-// ✅ Check if a chatId is archived for the current user
-const isArchivedChat = (chatId: string): boolean => {
-  if (!_store) return false;
-  const state = _store.getState();
-  // archivedChatIds is tracked in Redux as a Set/array
-  return state.chat.archivedChatIds?.includes(chatId) ?? false;
-};
-
 // ✅ SUBSCRIBE
 export const subscribeToChat = (chatId: string): void => {
   const topic = `/topic/chat/${chatId}`;
@@ -146,6 +138,17 @@ export const subscribeToChat = (chatId: string): void => {
       return;
     }
 
+    // ── GROUP DELETED BY ADMIN ────────────────────────────────────────────────
+    if (payload.type === 'GROUP_DELETED') {
+      const deletedChatId = payload.chatId;
+      _store.dispatch({ type: 'chat/removeChat', payload: deletedChatId });
+      const currentSelected = _store.getState().chat.selectedChatId;
+      if (currentSelected === deletedChatId) {
+        _store.dispatch({ type: 'chat/setSelectedChat', payload: null });
+      }
+      return;
+    }
+
     // ── EDIT ──────────────────────────────────────────────────────────────────
     if (payload.type === 'EDIT') {
       if (payload.messageId) {
@@ -171,9 +174,6 @@ export const subscribeToChat = (chatId: string): void => {
     const realMessage = buildRealMessage(payload, messageId);
     const currentUserId = state.auth.user?.id;
     const isCurrentChat = state.chat.selectedChatId === realMessage.chatId;
-
-    // ✅ Check if this chat is archived — if so, silently receive but don't
-    // update sidebar or increment unread. Message is stored only if it's open.
     const archived = state.chat.archivedChatIds?.includes(realMessage.chatId) ?? false;
 
     // ── OWN MESSAGE ───────────────────────────────────────────────────────────
@@ -189,7 +189,6 @@ export const subscribeToChat = (chatId: string): void => {
         });
       }
 
-      // ✅ Only update sidebar last message if NOT archived
       if (!archived) {
         _store.dispatch({ type: 'chat/updateChatLastMessage', payload: realMessage });
       }
@@ -197,19 +196,39 @@ export const subscribeToChat = (chatId: string): void => {
     }
 
     // ── OTHER USER MESSAGE ────────────────────────────────────────────────────
+    // ✅ FIX: Always dispatch receiveMessage for non-duplicate messages.
+    // Previously this only ran when isCurrentChat === true, so messages sent
+    // to Syam while the chat was open but not "current" were silently dropped.
+    // The receiveMessage reducer already handles:
+    //   • adding to messages[]
+    //   • updating sidebar lastMessage
+    //   • incrementing unreadCount (only when chat is NOT selected)
+    // So we no longer need the separate incrementUnread / updateChatLastMessage
+    // dispatches below — those were causing the bug by running even when
+    // receiveMessage was NOT dispatched (i.e. chat not open), giving the sidebar
+    // an update but no actual message in the store.
+
     const exists = state.chat.messages.some((m: any) => m.id === messageId);
-
-    // Always deliver to open chat window regardless of archive status
-    if (isCurrentChat && !exists) {
-      _store.dispatch(_receiveMessage(realMessage));
-    }
-
-    if (!archived) {
-      // ✅ Only update sidebar if NOT archived
-      if (!isCurrentChat) {
-        _store.dispatch({ type: 'chat/incrementUnread', payload: realMessage.chatId });
+console.log('📨 INCOMING MSG:', {
+  messageId,
+  chatId: realMessage.chatId,
+  content: realMessage.content,
+  senderId: payload.senderId,
+  currentUserId,
+  isCurrentChat,
+  archived,
+  exists,
+  selectedChatId: state.chat.selectedChatId,
+  messagesInStore: state.chat.messages.length,
+});
+    if (!exists) {
+      if (!archived) {
+        // ✅ Always deliver — receiveMessage handles messages[], sidebar, and unread
+        _store.dispatch(_receiveMessage(realMessage));
+      } else if (isCurrentChat) {
+        // Archived chat but currently open: show the message, skip sidebar/unread
+        _store.dispatch(_receiveMessage(realMessage));
       }
-      _store.dispatch({ type: 'chat/updateChatLastMessage', payload: realMessage });
     }
   });
 };

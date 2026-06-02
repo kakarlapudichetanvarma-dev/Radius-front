@@ -120,7 +120,11 @@ function buildWallpaperStyle(wallpaper?: {
 export default function ChatWindow({ onFilePrepared }: Props) {
   const dispatch = useDispatch<AppDispatch>();
 
-  const messages = useSelector((state: RootState) => state.chat.messages);
+  const messages = useSelector((state: RootState) =>
+  state.chat.selectedChatId
+    ? state.chat.messages.filter(m => m.chatId === state.chat.selectedChatId)
+    : []
+);
   const { user } = useSelector((state: RootState) => state.auth);
   const loadingMessages = useSelector((state: RootState) => state.chat.loadingMessages);
   const selectedChatId = useSelector((state: RootState) => state.chat.selectedChatId);
