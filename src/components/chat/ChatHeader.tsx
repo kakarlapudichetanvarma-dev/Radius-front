@@ -12,6 +12,7 @@ import { useTypingUsers } from '../../hooks/useTyping';
 import WallpaperSettings from '../profile/WallpaperSettings';
 import PrivateChatInfoPanel from './PrivateChatInfoPanel';
 import GroupChatInfoPanel from './GroupChatInfoPanel';
+import { getFormattedLastSeen } from '../../presence/last-seen';
 
 export default function ChatHeader() {
   const [calling, setCalling] = useState(false);
@@ -19,10 +20,12 @@ export default function ChatHeader() {
   const [showInfoPanel, setShowInfoPanel] = useState(false);
 
   const selectedChat = useSelector((state: RootState) => state.chat.selectedChat);
-  const friends = useSelector((state: RootState) => state.friend.friends);
+  const friends      = useSelector((state: RootState) => state.friend.friends);
+  const onlineUsers  = useSelector((state: RootState) => state.chat.onlineUsers);
+  const lastSeenMap  = useSelector((state: RootState) => state.chat.lastSeenMap);
 
   const typingUsers = useTypingUsers(selectedChat?.chatId ?? null);
-  const isTyping = typingUsers.length > 0;
+  const isTyping    = typingUsers.length > 0;
 
   const chatName = selectedChat
     ? selectedChat.type === 'GROUP'
@@ -36,10 +39,42 @@ export default function ChatHeader() {
     return friend?.profilePicture ? `http://localhost:8080${friend.profilePicture}` : null;
   })();
 
+  // ── Presence for private chats ──────────────────────────────────────────
+  const isPrivateChat    = selectedChat?.type === 'PRIVATE';
+  const otherUsername    = selectedChat?.otherParticipantUsername ?? '';
+  const isOtherOnline    = isPrivateChat && onlineUsers.includes(otherUsername);
+  const lastSeenText     = isPrivateChat && !isOtherOnline
+    ? getFormattedLastSeen(lastSeenMap[otherUsername] ?? null)
+    : '';
+
+  // ── Group member count ──────────────────────────────────────────────────
+  const memberCount = selectedChat?.type === 'GROUP'
+    ? selectedChat.groupInfo?.memberCount
+    : null;
+
+  // ── Sub-title logic (priority: typing > online/lastSeen > member count) ──
+  const subTitle = (() => {
+    if (!selectedChat) return null;
+
+    if (isTyping) return null; // TypingIndicator handles this case
+
+    if (isPrivateChat) {
+      if (isOtherOnline) return 'online';
+      if (lastSeenText)  return lastSeenText;
+      return null;
+    }
+
+    if (selectedChat.type === 'GROUP' && memberCount) {
+      return `${memberCount} member${memberCount === 1 ? '' : 's'}`;
+    }
+
+    return null;
+  })();
+
   const handleCall = async () => {
     try {
       const stream = await getAudioStream();
-      const offer = await createOffer(stream);
+      const offer  = await createOffer(stream);
       sendOffer(offer);
       setCalling(true);
     } catch (error) {
@@ -77,6 +112,7 @@ export default function ChatHeader() {
               onClick={() => setShowInfoPanel(prev => !prev)}
               className="flex items-center gap-3 hover:opacity-80 transition text-left"
             >
+              {/* Avatar */}
               <div className="relative">
                 {selectedChat.type === 'GROUP' ? (
                   selectedChat.groupInfo?.profilePicture ? (
@@ -101,13 +137,37 @@ export default function ChatHeader() {
                     {chatName?.charAt(0).toUpperCase() || '?'}
                   </div>
                 )}
+
+                {/* Online dot — private chats only */}
+                {isPrivateChat && (
+                  <span
+                    className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black transition-colors duration-300 ${
+                      isOtherOnline ? 'bg-green-400' : 'bg-zinc-600'
+                    }`}
+                  />
+                )}
               </div>
 
+              {/* Name + status */}
               <div>
-                <p className="text-yellow-400 font-medium">
+                <p className="text-yellow-400 font-medium leading-tight">
                   {chatName || 'Select a chat'}
                 </p>
-                {isTyping && <TypingIndicator variant="inline" />}
+
+                {/* Typing indicator takes priority */}
+                {isTyping ? (
+                  <TypingIndicator variant="inline" />
+                ) : subTitle ? (
+                  <p
+                    className={`text-xs leading-tight mt-0.5 ${
+                      isOtherOnline
+                        ? 'text-green-400'
+                        : 'text-zinc-400'
+                    }`}
+                  >
+                    {subTitle}
+                  </p>
+                ) : null}
               </div>
             </button>
           )}

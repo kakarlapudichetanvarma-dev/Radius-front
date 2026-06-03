@@ -10,14 +10,14 @@ import ChatWindow from '../components/chat/ChatWindow';
 import MessageInput from '../components/chat/MessageInput';
 import IncomingCallModal from '../components/call/IncomingCallModal';
 
-import { fetchChats, setTyping, updateOnlineUsers } from '../store/slices/chat.slice';
-import { fetchFriends, fetchPendingRequests } from '../store/slices/friend.slice';
+import { fetchChats } from '../store/slices/chat.slice';
+import { fetchFriends } from '../store/slices/friend.slice';
 import { ensureSocketConnected, safeSubscribe } from '../socket/socket.client';
 import { revokePreview, type PreparedUpload } from '../services/upload.service';
 
-const SIDEBAR_MIN = 220;
-const SIDEBAR_MAX = 600;
-const SIDEBAR_DEFAULT = 380;
+const SIDEBAR_MIN         = 220;
+const SIDEBAR_MAX         = 600;
+const SIDEBAR_DEFAULT     = 380;
 const SIDEBAR_STORAGE_KEY = 'chat_sidebar_width';
 
 function getInitialSidebarWidth(): number {
@@ -35,20 +35,21 @@ export default function ChatPage() {
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
 
-  const [pendingUpload, setPendingUpload] = useState<PreparedUpload | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth);
-  const isDraggingDivider = useRef(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [pendingUpload, setPendingUpload]   = useState<PreparedUpload | null>(null);
+  const [sidebarWidth, setSidebarWidth]     = useState(getInitialSidebarWidth);
+  const isDraggingDivider                   = useRef(false);
+  const containerRef                        = useRef<HTMLDivElement>(null);
 
   const handleSetPendingUpload = (upload: PreparedUpload | null) => {
     if (pendingUpload?.previewUrl) revokePreview(pendingUpload.previewUrl);
     setPendingUpload(upload);
   };
 
+  // ── Sidebar drag-to-resize ─────────────────────────────────────────────────
   const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    isDraggingDivider.current = true;
-    document.body.style.cursor = 'col-resize';
+    isDraggingDivider.current      = true;
+    document.body.style.cursor     = 'col-resize';
     document.body.style.userSelect = 'none';
   }, []);
 
@@ -61,15 +62,15 @@ export default function ChatPage() {
     };
     const onMouseUp = () => {
       if (!isDraggingDivider.current) return;
-      isDraggingDivider.current = false;
-      document.body.style.cursor = '';
+      isDraggingDivider.current      = false;
+      document.body.style.cursor     = '';
       document.body.style.userSelect = '';
     };
     document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('mouseup',   onMouseUp);
     return () => {
       document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('mouseup',   onMouseUp);
     };
   }, []);
 
@@ -77,27 +78,30 @@ export default function ChatPage() {
     try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarWidth)); } catch {}
   }, [sidebarWidth]);
 
+  // ── Initial data fetch + polling ───────────────────────────────────────────
   useEffect(() => {
     if (!user?.username) return;
+
     dispatch(fetchChats(user.username));
     dispatch(fetchFriends());
-    dispatch(fetchPendingRequests());
+
+    // Poll chats every 30s (presence is handled by WebSocket, no need to poll friends)
     const pollInterval = setInterval(() => {
-      dispatch(fetchPendingRequests());
       dispatch(fetchChats(user.username));
     }, 30000);
+
     return () => clearInterval(pollInterval);
   }, [dispatch, user]);
 
+  // ── WebSocket subscriptions ────────────────────────────────────────────────
+  // NOTE: presence (/topic/presence) is handled by usePresence() hook in MainLayout.
+  // Typing is subscribed here since it's page-level.
   useEffect(() => {
     ensureSocketConnected();
+
     safeSubscribe('/topic/typing', msg => {
-      dispatch(setTyping(msg.body));
-      setTimeout(() => dispatch(setTyping(null)), 3000);
-    });
-    safeSubscribe('/topic/presence', msg => {
-      try { dispatch(updateOnlineUsers(JSON.parse(msg.body))); }
-      catch (err) { console.error(err); }
+      // typing is handled per-chat via useTyping hook; this global sub can be removed
+      // if you've fully migrated — kept for backward compatibility
     });
   }, [dispatch]);
 
@@ -122,12 +126,12 @@ export default function ChatPage() {
           style={{ background: 'rgba(250,204,21,0.08)' }}
           title="Drag to resize"
         >
-          {/* hover glow strip */}
-          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-            style={{ background: 'rgba(250,204,21,0.35)', boxShadow: '0 0 8px rgba(250,204,21,0.4)' }} />
-          {/* drag handle dots */}
+          <div
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            style={{ background: 'rgba(250,204,21,0.35)', boxShadow: '0 0 8px rgba(250,204,21,0.4)' }}
+          />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            {[0,1,2].map(i => (
+            {[0, 1, 2].map(i => (
               <div key={i} className="w-1 h-1 rounded-full bg-yellow-400/70" />
             ))}
           </div>

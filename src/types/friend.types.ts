@@ -4,27 +4,9 @@ export interface FriendSummary {
   phoneNumber: string;
   profilePicture: string | null;
   online: boolean;
+  lastSeen: string | null;
 }
 
-export interface FriendRequest {
-  requestId: string;
-  requesterId: string;
-  requesterUsername: string;
-  requesterPhone: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
-  createdAt: string;
-}
-
-export interface SendFriendRequestPayload {
-  phoneNumber: string;
-}
-
-export interface FriendRequestActionPayload {
-  requestId: string;
-  action: 'ACCEPT' | 'REJECT';
-}
-
-// ── New: result from phone number search ──────────────────────────────────────
 export interface UserSearchResult {
   userId: string;
   username: string;

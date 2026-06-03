@@ -1,6 +1,4 @@
 import {
-  setUserOnline,
-  setUserOffline,
   setUserTypingInChat,
   clearUserTypingInChat,
 } from '../store/slices/chat.slice';
@@ -9,20 +7,17 @@ import {
   safeSubscribe
 } from './socket.client';
 
+// ── REMOVED: presenceSubscribed — presence is handled exclusively
+//             by presence.events.ts to avoid duplicate subscriptions ──
+
 let _store: any = null;
 let _receiveMessage: any = null;
 let _updateMessageStatus: any = null;
 
-let presenceSubscribed = false;
-
 const activeChatTopics = new Set<string>();
-
 const pendingOwnMessages = new Map<string, { content: string; chatId: string }>();
-
 const realIdToOptimisticId = new Map<string, string>();
-
 const alreadyProcessedIds = new Set<string>();
-
 const typingClearTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const trackOptimisticMessage = (
@@ -74,12 +69,9 @@ const findMatchingOptimisticId = (
   return null;
 };
 
-// ✅ SUBSCRIBE
 export const subscribeToChat = (chatId: string): void => {
   const topic = `/topic/chat/${chatId}`;
-
   if (activeChatTopics.has(topic)) return;
-
   activeChatTopics.add(topic);
 
   console.log('📡 SUB:', topic);
@@ -91,7 +83,6 @@ export const subscribeToChat = (chatId: string): void => {
     const state = _store.getState();
     const currentUsername = state.auth.user?.username;
 
-    // ── TYPING ────────────────────────────────────────────────────────────────
     if (payload.type === 'TYPING') {
       if (payload.username === currentUsername) return;
       const key = `${chatId}:${payload.username}`;
@@ -115,7 +106,6 @@ export const subscribeToChat = (chatId: string): void => {
       return;
     }
 
-    // ── STATUS UPDATE ─────────────────────────────────────────────────────────
     if (payload.type === 'STATUS_UPDATE') {
       if (_updateMessageStatus && payload.messageId && payload.status) {
         const optimisticId = realIdToOptimisticId.get(payload.messageId);
@@ -127,18 +117,13 @@ export const subscribeToChat = (chatId: string): void => {
       return;
     }
 
-    // ── DELETE FOR EVERYONE ───────────────────────────────────────────────────
     if (payload.type === 'DELETE') {
       if (payload.messageId) {
-        _store.dispatch({
-          type: 'chat/deleteMessageLocally',
-          payload: payload.messageId,
-        });
+        _store.dispatch({ type: 'chat/deleteMessageLocally', payload: payload.messageId });
       }
       return;
     }
 
-    // ── GROUP DELETED BY ADMIN ────────────────────────────────────────────────
     if (payload.type === 'GROUP_DELETED') {
       const deletedChatId = payload.chatId;
       _store.dispatch({ type: 'chat/removeChat', payload: deletedChatId });
@@ -149,7 +134,6 @@ export const subscribeToChat = (chatId: string): void => {
       return;
     }
 
-    // ── EDIT ──────────────────────────────────────────────────────────────────
     if (payload.type === 'EDIT') {
       if (payload.messageId) {
         _store.dispatch({
@@ -166,7 +150,6 @@ export const subscribeToChat = (chatId: string): void => {
 
     const messageId = payload.messageId || payload.id;
 
-    // ── Duplicate prevention ──────────────────────────────────────────────────
     if (alreadyProcessedIds.has(messageId)) return;
     alreadyProcessedIds.add(messageId);
     setTimeout(() => alreadyProcessedIds.delete(messageId), 1000);
@@ -176,10 +159,8 @@ export const subscribeToChat = (chatId: string): void => {
     const isCurrentChat = state.chat.selectedChatId === realMessage.chatId;
     const archived = state.chat.archivedChatIds?.includes(realMessage.chatId) ?? false;
 
-    // ── OWN MESSAGE ───────────────────────────────────────────────────────────
     if (payload.senderId === currentUserId) {
       const optimisticId = findMatchingOptimisticId(payload.content ?? '', payload.chatId);
-
       if (optimisticId) {
         pendingOwnMessages.delete(optimisticId);
         realIdToOptimisticId.set(messageId, optimisticId);
@@ -188,67 +169,40 @@ export const subscribeToChat = (chatId: string): void => {
           payload: { optimisticId, realMessage },
         });
       }
-
       if (!archived) {
         _store.dispatch({ type: 'chat/updateChatLastMessage', payload: realMessage });
       }
       return;
     }
 
-    // ── OTHER USER MESSAGE ────────────────────────────────────────────────────
-    // ✅ FIX: Always dispatch receiveMessage for non-duplicate messages.
-    // Previously this only ran when isCurrentChat === true, so messages sent
-    // to Syam while the chat was open but not "current" were silently dropped.
-    // The receiveMessage reducer already handles:
-    //   • adding to messages[]
-    //   • updating sidebar lastMessage
-    //   • incrementing unreadCount (only when chat is NOT selected)
-    // So we no longer need the separate incrementUnread / updateChatLastMessage
-    // dispatches below — those were causing the bug by running even when
-    // receiveMessage was NOT dispatched (i.e. chat not open), giving the sidebar
-    // an update but no actual message in the store.
-
     const exists = state.chat.messages.some((m: any) => m.id === messageId);
-console.log('📨 INCOMING MSG:', {
-  messageId,
-  chatId: realMessage.chatId,
-  content: realMessage.content,
-  senderId: payload.senderId,
-  currentUserId,
-  isCurrentChat,
-  archived,
-  exists,
-  selectedChatId: state.chat.selectedChatId,
-  messagesInStore: state.chat.messages.length,
-});
+    console.log('📨 INCOMING MSG:', {
+      messageId,
+      chatId: realMessage.chatId,
+      content: realMessage.content,
+      senderId: payload.senderId,
+      currentUserId,
+      isCurrentChat,
+      archived,
+      exists,
+      selectedChatId: state.chat.selectedChatId,
+      messagesInStore: state.chat.messages.length,
+    });
+
     if (!exists) {
       if (!archived) {
-        // ✅ Always deliver — receiveMessage handles messages[], sidebar, and unread
         _store.dispatch(_receiveMessage(realMessage));
       } else if (isCurrentChat) {
-        // Archived chat but currently open: show the message, skip sidebar/unread
         _store.dispatch(_receiveMessage(realMessage));
       }
     }
   });
 };
 
-// ✅ PRESENCE
-export const subscribeToPresence = (userId: string): void => {
-  if (presenceSubscribed) return;
-  presenceSubscribed = true;
-  safeSubscribe('/topic/presence', frame => {
-    const payload = JSON.parse(frame.body);
-    if (payload.status === 'ONLINE') {
-      _store.dispatch(setUserOnline(payload.username));
-    } else {
-      _store.dispatch(setUserOffline(payload.username));
-    }
-  });
-};
+// ── REMOVED: subscribeToPresence() — handled by presence.events.ts ──
 
 export const resetMessageEvents = (): void => {
-  presenceSubscribed = false;
+  // Note: presence cleanup is done by disconnectPresence() in presence.events.ts
   pendingOwnMessages.clear();
   realIdToOptimisticId.clear();
   alreadyProcessedIds.clear();

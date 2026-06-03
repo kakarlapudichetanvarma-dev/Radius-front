@@ -1,37 +1,70 @@
-import { socketClient, safeSubscribe, ensureSocketConnected } from './socket.client';
+import { socketClient, ensureSocketConnected, addOnConnectCallback } from './socket.client';
 import { store } from '../store';
-import { updateOnlineUsers } from '../store/slices/chat.slice';
+import { applyPresenceEvent, updateOnlineUsers } from '../store/slices/chat.slice';
+import { storage } from '../utils/storage.utils'; // ✅ same source socket.client uses
+import axios from 'axios';
 
-let presenceConnected = false;
+let activeSub: { unsubscribe: () => void } | null = null;
+let subscribed = false;
+
+const handlePresenceMessage = (message: { body: string }) => {
+  try {
+    const event = JSON.parse(message.body) as {
+      username: string;
+      online:   boolean;
+      lastSeen: string | null;
+    };
+    if (!event?.username) return;
+    store.dispatch(applyPresenceEvent({
+      username: event.username,
+      online:   event.online,
+      lastSeen: event.lastSeen ?? null,
+    }));
+  } catch (e) {
+    console.error('[presence] Failed to parse event', e);
+  }
+};
+
+const fetchOnlineUsers = async () => {
+  try {
+    const token = store.getState().auth.accessToken; // ✅ correct field name
+    if (!token) return;
+
+    const res = await axios.get('http://localhost:8080/api/v1/chat/presence/online', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const onlineUsers: string[] = res.data.data;
+    store.dispatch(updateOnlineUsers(onlineUsers));
+    console.log('[presence] online users fetched:', onlineUsers);
+  } catch (e) {
+    console.error('[presence] Failed to fetch online users', e);
+  }
+};
+
+const doSubscribe = () => {
+  if (subscribed) return;
+  subscribed = true;
+
+  activeSub?.unsubscribe();
+
+  activeSub = socketClient.subscribe('/topic/presence', handlePresenceMessage);
+  console.log('📡 SUB: /topic/presence');
+
+  fetchOnlineUsers();
+};
 
 export const connectPresence = () => {
-  if (presenceConnected) return;
-  presenceConnected = true;
-
-  const doSub = () => {
-    safeSubscribe('/topic/presence', (message) => {
-      try {
-        const users = JSON.parse(message.body);
-        store.dispatch(updateOnlineUsers(users));
-      } catch (e) {
-        console.error('Failed to parse presence update', e);
-      }
-    });
-  };
-
   if (socketClient.connected) {
-    doSub();
+    doSubscribe();
   } else {
-    // ✅ Queue for after STOMP connects — fixes "offline always" bug
-    const prev = socketClient.onConnect;
-    socketClient.onConnect = (frame) => {
-      if (prev) prev.call(socketClient, frame);
-      doSub();
-    };
+    addOnConnectCallback(doSubscribe);
     ensureSocketConnected();
   }
 };
 
 export const disconnectPresence = () => {
-  presenceConnected = false;
+  activeSub?.unsubscribe();
+  activeSub  = null;
+  subscribed = false;
 };

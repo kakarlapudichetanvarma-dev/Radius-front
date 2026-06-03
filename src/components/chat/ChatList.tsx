@@ -2,14 +2,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { AppDispatch, RootState } from '../../store';
-import { setSelectedChat, unarchiveChat, markChatArchived } from '../../store/slices/chat.slice';
+import { setSelectedChat, unarchiveChat, markChatArchived, selectOnlineUsers, selectLastSeenMap } from '../../store/slices/chat.slice';
 import type { ChatSummary } from '../../types/chat.types';
 import TypingIndicator from './TypingIndicator';
 import { useIsTyping } from '../../hooks/useTyping';
 import { chatService } from '../../services/chat.service';
 import { Archive } from 'lucide-react';
+import { formatLastSeen } from '../../presence/last-seen';
 
-// ── Message Tick (WhatsApp-style) ─────────────────────────────────────────────
+// ── Message Tick ──────────────────────────────────────────────────────────────
 
 interface MessageTickProps {
   status: 'SENT' | 'DELIVERED' | 'READ' | null;
@@ -17,18 +18,14 @@ interface MessageTickProps {
 
 function MessageTick({ status }: MessageTickProps) {
   if (!status) return null;
-
   if (status === 'SENT') {
-    // Single grey tick
     return (
       <svg className="w-4 h-4 flex-shrink-0 text-zinc-500" viewBox="0 0 16 11" fill="none">
         <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     );
   }
-
   if (status === 'DELIVERED') {
-    // Double grey ticks
     return (
       <svg className="w-5 h-4 flex-shrink-0 text-zinc-500" viewBox="0 0 20 11" fill="none">
         <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -36,9 +33,7 @@ function MessageTick({ status }: MessageTickProps) {
       </svg>
     );
   }
-
   if (status === 'READ') {
-    // Double blue ticks
     return (
       <svg className="w-5 h-4 flex-shrink-0 text-blue-400" viewBox="0 0 20 11" fill="none">
         <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -46,7 +41,6 @@ function MessageTick({ status }: MessageTickProps) {
       </svg>
     );
   }
-
   return null;
 }
 
@@ -58,9 +52,10 @@ interface AvatarProps {
   avatarUrl: string | null;
   chatName: string;
   isGroup: boolean;
+  isOnline?: boolean; // ✅ new
 }
 
-function Avatar({ size = 10, avatarUrl, chatName }: AvatarProps) {
+function Avatar({ size = 10, avatarUrl, chatName, isGroup, isOnline }: AvatarProps) {
   return (
     <div className="relative flex-shrink-0">
       {avatarUrl ? (
@@ -75,11 +70,20 @@ function Avatar({ size = 10, avatarUrl, chatName }: AvatarProps) {
           {chatName.charAt(0).toUpperCase() || '?'}
         </div>
       )}
+
+      {/* ✅ Online dot — only for private chats */}
+      {!isGroup && (
+        <span
+          className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-zinc-950 transition-colors duration-300 ${
+            isOnline ? 'bg-green-400' : 'bg-zinc-600'
+          }`}
+        />
+      )}
     </div>
   );
 }
 
-// ── Chat context menu ─────────────────────────────────────────────────────────
+// ── Chat Context Menu ─────────────────────────────────────────────────────────
 
 interface ChatMenuProps {
   chatId: string;
@@ -138,17 +142,31 @@ interface ChatItemProps {
   avatarUrl: string | null;
   isSelected: boolean;
   currentUserId: string | null;
+  isOnline: boolean;       // ✅ new
+  lastSeenText: string;    // ✅ new
   onClick: () => void;
   onArchived: (chatId: string) => void;
 }
 
-function ChatItem({ chat, chatName, isGroup, avatarUrl, isSelected, currentUserId, onClick, onArchived }: ChatItemProps) {
+function ChatItem({
+  chat, chatName, isGroup, avatarUrl, isSelected,
+  currentUserId, isOnline, lastSeenText, onClick, onArchived
+}: ChatItemProps) {
   const isTyping = useIsTyping(chat.chatId);
   const [showMenu, setShowMenu] = useState(false);
 
-  // Only show ticks if the last message was sent by the current user
   const isMyLastMessage = currentUserId && chat.lastMessageSenderId === currentUserId;
   const tickStatus = isMyLastMessage ? chat.lastMessageStatus : null;
+
+  // ✅ Sub-label: for private chats show online/lastSeen; for groups show last message
+  const subLabel = (() => {
+    if (isTyping) return null; // TypingIndicator handles it
+    if (!isGroup) {
+      if (isOnline) return { text: 'Online', green: true };
+      if (lastSeenText) return { text: lastSeenText, green: false };
+    }
+    return null;
+  })();
 
   return (
     <div className="relative group">
@@ -157,12 +175,14 @@ function ChatItem({ chat, chatName, isGroup, avatarUrl, isSelected, currentUserI
         className={`w-full text-left p-4 border-b border-zinc-800 hover:bg-zinc-800/50 transition ${isSelected ? 'bg-zinc-800' : ''}`}
       >
         <div className="flex items-center gap-3">
+          {/* ✅ Avatar with online dot */}
           <Avatar
             chat={chat}
             size={10}
             avatarUrl={avatarUrl}
             chatName={chatName}
             isGroup={isGroup}
+            isOnline={isOnline}
           />
 
           <div className="flex-1 min-w-0">
@@ -177,12 +197,14 @@ function ChatItem({ chat, chatName, isGroup, avatarUrl, isSelected, currentUserI
 
             <div className="flex justify-between items-center mt-0.5">
               <div className="flex items-center gap-1 min-w-0">
-                {/* Tick — shown inline before the message preview */}
-                {!isTyping && tickStatus && (
-                  <MessageTick status={tickStatus} />
-                )}
+                {!isTyping && tickStatus && <MessageTick status={tickStatus} />}
                 {isTyping ? (
                   <TypingIndicator variant="inline" />
+                ) : subLabel ? (
+                  // ✅ Show online / last seen instead of last message
+                  <p className={`text-xs truncate ${subLabel.green ? 'text-green-400' : 'text-zinc-500 italic'}`}>
+                    {subLabel.text}
+                  </p>
                 ) : (
                   <p className="text-zinc-500 text-xs truncate">
                     {chat.lastMessage || 'No messages yet'}
@@ -207,7 +229,6 @@ function ChatItem({ chat, chatName, isGroup, avatarUrl, isSelected, currentUserI
         >
           ▾
         </button>
-
         <AnimatePresence>
           {showMenu && (
             <ChatContextMenu
@@ -314,7 +335,6 @@ function ArchivedChatsPanel({ onClose }: ArchivedPanelProps) {
             const chatName = getChatName(chat);
             const isGroup = chat.type === 'GROUP';
             const avatarUrl = getAvatarUrl(chat);
-
             return (
               <div key={chat.chatId} className="relative group border-b border-zinc-800 hover:bg-zinc-800/40 transition">
                 <button onClick={() => handleOpen(chat)} className="w-full text-left p-4">
@@ -355,10 +375,14 @@ export default function ChatList() {
   const [localChats, setLocalChats] = useState<ChatSummary[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  const chats = useSelector((state: RootState) => state.chat.chats);
-  const friends = useSelector((state: RootState) => state.friend.friends);
+  const chats        = useSelector((state: RootState) => state.chat.chats);
+  const friends      = useSelector((state: RootState) => state.friend.friends);
   const selectedChatId = useSelector((state: RootState) => state.chat.selectedChatId);
-  const currentUserId = useSelector((state: RootState) => (state.auth as any)?.user?.userId ?? null);
+  const currentUserId  = useSelector((state: RootState) => (state.auth as any)?.user?.userId ?? null);
+
+  // ✅ Memoized presence selectors — no rerender warnings
+  const onlineUsers  = useSelector(selectOnlineUsers);
+  const lastSeenMap  = useSelector(selectLastSeenMap);
 
   const visibleChats = localChats ?? chats;
 
@@ -423,9 +447,18 @@ export default function ChatList() {
           <div>
             <p className="text-zinc-500 text-xs px-4 py-2 uppercase tracking-wider">Chats</p>
             {visibleChats.map(chat => {
-              const chatName = getChatName(chat);
-              const isGroup = chat.type === 'GROUP';
-              const avatarUrl = getAvatarUrl(chat);
+              const chatName    = getChatName(chat);
+              const isGroup     = chat.type === 'GROUP';
+              const avatarUrl   = getAvatarUrl(chat);
+
+              // ✅ Compute presence per chat item
+              const otherUsername = chat.type === 'PRIVATE'
+                ? chat.otherParticipantUsername ?? ''
+                : '';
+              const isOnline    = !isGroup && onlineUsers.includes(otherUsername);
+              const lastSeenText = !isGroup && !isOnline
+                ? formatLastSeen(lastSeenMap[otherUsername] ?? null)
+                : '';
 
               return (
                 <ChatItem
@@ -436,6 +469,8 @@ export default function ChatList() {
                   avatarUrl={avatarUrl}
                   isSelected={selectedChatId === chat.chatId}
                   currentUserId={currentUserId}
+                  isOnline={isOnline}
+                  lastSeenText={lastSeenText}
                   onClick={() => handleChatClick(chat)}
                   onArchived={handleArchived}
                 />

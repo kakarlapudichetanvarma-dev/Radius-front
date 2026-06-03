@@ -2,7 +2,8 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { ChatSummary, Message } from '../../types/chat.types';
 import { chatService } from '../../services/chat.service';
-
+import { createSelector } from '@reduxjs/toolkit';
+import type { RootState } from '../index';
 interface ChatState {
   chats: ChatSummary[];
   selectedChatId: string | null;
@@ -13,6 +14,7 @@ interface ChatState {
   typingUser: string | null;
   typingUsers: Record<string, string[]>;
   onlineUsers: string[];
+  lastSeenMap: Record<string, string>; // username -> ISO lastSeen string
   error: string | null;
   chatClosedAt: Record<string, string>;
   _optimisticAtFetchStart: Message[];
@@ -20,7 +22,6 @@ interface ChatState {
   archivedChatIds: string[];
 }
 
-// ✅ Strip any old URL-based group photos from a chat list so they don't cause 401s
 function sanitizeChats(chats: ChatSummary[]): ChatSummary[] {
   return chats.map(chat => {
     if (
@@ -36,7 +37,6 @@ function sanitizeChats(chats: ChatSummary[]): ChatSummary[] {
   });
 }
 
-// ✅ Strip old URL-based photo from a single chat (e.g. selectedChat)
 function sanitizeChat(chat: ChatSummary | null): ChatSummary | null {
   if (!chat) return null;
   if (
@@ -66,9 +66,7 @@ function loadPersistedSelection(): {
 
     return {
       selectedChatId: selectedChatId ?? null,
-      // ✅ Sanitize selectedChat so stale URL photos don't reach <img> tags
       selectedChat: sanitizeChat(rawSelectedChat),
-      // ✅ Sanitize all chats so stale URL photos don't reach <img> tags
       chats: sanitizeChats(rawChats),
     };
   } catch {
@@ -120,6 +118,7 @@ const initialState: ChatState = {
   typingUser: null,
   typingUsers: {},
   onlineUsers: [],
+  lastSeenMap: {}, // populated via WebSocket presence events
   error: null,
   chatClosedAt: {},
   _optimisticAtFetchStart: [],
@@ -252,6 +251,7 @@ const chatSlice = createSlice({
       state.typingUser = null;
       state.typingUsers = {};
       state.onlineUsers = [];
+      state.lastSeenMap = {};
       state.error = null;
       state.chatClosedAt = {};
       state._optimisticAtFetchStart = [];
@@ -410,19 +410,58 @@ const chatSlice = createSlice({
       delete state.typingUsers[action.payload];
     },
 
+    // ── Presence actions ────────────────────────────────────────────────────
+
+    /**
+     * Replaces the full online users list (legacy — kept for compatibility).
+     */
     updateOnlineUsers: (state, action: PayloadAction<string[]>) => {
       state.onlineUsers = action.payload;
+    },
+
+    /**
+     * Called when a single presence event arrives:
+     * { username, online, lastSeen }
+     */
+    applyPresenceEvent: (
+      state,
+      action: PayloadAction<{ username: string; online: boolean; lastSeen: string | null }>
+    ) => {
+      const { username, online, lastSeen } = action.payload;
+
+      if (online) {
+        if (!state.onlineUsers.includes(username)) {
+          state.onlineUsers.push(username);
+        }
+        // Clear lastSeen when user comes online
+        delete state.lastSeenMap[username];
+      } else {
+        state.onlineUsers = state.onlineUsers.filter(u => u !== username);
+        if (lastSeen) {
+          state.lastSeenMap[username] = lastSeen;
+        }
+      }
     },
 
     setUserOnline: (state, action: PayloadAction<string>) => {
       if (!state.onlineUsers.includes(action.payload)) {
         state.onlineUsers.push(action.payload);
       }
+      delete state.lastSeenMap[action.payload];
     },
 
     setUserOffline: (state, action: PayloadAction<string>) => {
       state.onlineUsers = state.onlineUsers.filter(u => u !== action.payload);
     },
+
+    setUserLastSeen: (
+      state,
+      action: PayloadAction<{ username: string; lastSeen: string }>
+    ) => {
+      state.lastSeenMap[action.payload.username] = action.payload.lastSeen;
+    },
+
+    // ── Other actions ────────────────────────────────────────────────────────
 
     addSystemMessage: (state, action: PayloadAction<Message>) => {
       state.messages = [...state.messages, action.payload];
@@ -464,12 +503,10 @@ const chatSlice = createSlice({
       state,
       action: PayloadAction<{ chatId: string; profilePicture: string }>
     ) => {
-      // Update in chats list (sidebar)
       const chat = state.chats.find(c => c.chatId === action.payload.chatId);
       if (chat && chat.groupInfo) {
         chat.groupInfo.profilePicture = action.payload.profilePicture;
       }
-      // Update in selectedChat (chat header)
       if (state.selectedChat?.chatId === action.payload.chatId && state.selectedChat.groupInfo) {
         state.selectedChat.groupInfo.profilePicture = action.payload.profilePicture;
       }
@@ -578,8 +615,6 @@ const chatSlice = createSlice({
             ? new Date(inMemory.lastMessageAt).getTime() : 0;
           const base = memoryTime > serverTime ? inMemory : serverChat;
 
-          // ✅ Always prefer the server's base64 photo over anything in memory.
-          // If server returns null, fall back to in-memory only if it's a valid base64.
           const serverPhoto = serverChat.groupInfo?.profilePicture ?? null;
           const memoryPhoto = inMemory?.groupInfo?.profilePicture ?? null;
           const resolvedPhoto =
@@ -695,7 +730,28 @@ const chatSlice = createSlice({
       });
   }
 });
+export const selectOnlineUsers = createSelector(
+  (state: RootState) => state.chat.onlineUsers,
+  (onlineUsers) => onlineUsers  // stable reference
+);
 
+export const selectLastSeenMap = createSelector(
+  (state: RootState) => state.chat.lastSeenMap,
+  (lastSeenMap) => lastSeenMap
+);
+
+// Per-user — call inside component, memoize with useMemo if used in lists
+export const makeSelectIsUserOnline = (username: string) =>
+  createSelector(
+    selectOnlineUsers,
+    (onlineUsers) => onlineUsers.includes(username)
+  );
+
+export const makeSelectLastSeen = (username: string) =>
+  createSelector(
+    selectLastSeenMap,
+    (lastSeenMap) => lastSeenMap[username] ?? null
+  );
 export const {
   setSelectedChat,
   clearSelectedChat,
@@ -713,8 +769,10 @@ export const {
   clearUserTypingInChat,
   clearAllTypingInChat,
   updateOnlineUsers,
+  applyPresenceEvent,
   setUserOnline,
   setUserOffline,
+  setUserLastSeen,
   addSystemMessage,
   updateChatLastMessage,
   updateChatAvatar,
