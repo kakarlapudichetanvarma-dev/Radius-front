@@ -117,17 +117,20 @@ function ChatContextMenu({ chatId, onClose, onArchived }: ChatMenuProps) {
   return (
     <motion.div
       ref={menuRef}
-      initial={{ opacity: 0, scale: 0.92, y: -4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.92, y: -4 }}
-      transition={{ duration: 0.1 }}
-      className="absolute right-0 top-full mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden min-w-[150px]"
+      initial={{ opacity: 0, scale: 0.95, y: -6 }}
+      animate={{ opacity: 1, scale: 1,    y: 0  }}
+      exit={{    opacity: 0, scale: 0.95, y: -6 }}
+      transition={{ duration: 0.12 }}
+      // ✅ Glass effect: backdrop-blur + semi-transparent bg + border
+      className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-xl overflow-hidden shadow-2xl
+                 bg-zinc-900/70 backdrop-blur-md border border-white/10"
     >
       <button
         onClick={handleArchive}
-        className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-zinc-800 transition flex items-center gap-2"
+        className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2"
       >
-        <Archive size={16} /> Archive Chat
+        <Archive size={15} className="text-zinc-400" />
+        <span>Archive Chat</span>
       </button>
     </motion.div>
   );
@@ -221,23 +224,33 @@ function ChatItem({
         </div>
       </button>
 
-      <div className="absolute bottom-0.5 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={e => { e.stopPropagation(); setShowMenu(prev => !prev); }}
-          className="w-5 h-5 flex items-center justify-center rounded-full bg-zinc-700/80 hover:bg-zinc-600 text-zinc-300 text-xs"
-          title="Chat options"
-        >
-          ▾
-        </button>
-        <AnimatePresence>
-          {showMenu && (
-            <ChatContextMenu
-              chatId={chat.chatId}
-              onClose={() => setShowMenu(false)}
-              onArchived={onArchived}
-            />
-          )}
-        </AnimatePresence>
+      {/* ✅ Chevron trigger — top-right corner, appears on hover */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="relative">
+          <button
+            onClick={e => { e.stopPropagation(); setShowMenu(prev => !prev); }}
+            className="w-6 h-6 flex items-center justify-center rounded-full
+                       bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 transition-colors"
+            title="Chat options"
+          >
+            {/* ✅ Chevron down SVG — clean downward arrow */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" strokeWidth="2.5"
+                 strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          <AnimatePresence>
+            {showMenu && (
+              <ChatContextMenu
+                chatId={chat.chatId}
+                onClose={() => setShowMenu(false)}
+                onArchived={onArchived}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
