@@ -39,8 +39,8 @@ function getFileIcon(fileType: string | null | undefined): string {
 export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('images');
   const [images, setImages] = useState<MediaAttachment[]>([]);
-  const [files, setFiles] = useState<MediaAttachment[]>([]);
-  const [links, setLinks] = useState<MediaAttachment[]>([]);
+  const [files, setFiles]   = useState<MediaAttachment[]>([]);
+  const [links, setLinks]   = useState<MediaAttachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
@@ -73,17 +73,17 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4"
             onClick={() => setFullscreenImage(null)}
           >
             <img
               src={fullscreenImage}
               alt="fullscreen"
-              className="max-w-full max-h-full object-contain rounded-xl"
+              className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
               onClick={e => e.stopPropagation()}
             />
             <button
-              className="absolute top-4 right-4 text-white text-4xl hover:text-zinc-300 transition"
+              className="absolute top-4 right-4 text-white text-4xl hover:text-gray-300 transition"
               onClick={() => setFullscreenImage(null)}
             >×</button>
           </motion.div>
@@ -95,39 +95,39 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="absolute inset-0 z-30 bg-zinc-950 flex flex-col"
+        className="absolute inset-0 z-30 bg-white flex flex-col"
       >
         {/* Header */}
-        <div className="h-16 bg-black border-b border-yellow-500/20 flex items-center px-4 gap-3 flex-shrink-0">
+        <div className="h-16 bg-white border-b border-gray-100 flex items-center px-4 gap-3 flex-shrink-0">
           <button
             onClick={onBack}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-zinc-800 text-yellow-400 transition"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-violet-600 transition"
           >
             ←
           </button>
-          <p className="text-yellow-400 font-semibold">Media, Links & Files</p>
+          <p className="text-gray-900 font-semibold">Media, Links & Files</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-zinc-800 flex-shrink-0">
+        <div className="flex border-b border-gray-100 flex-shrink-0">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex-1 py-3 text-sm font-medium transition-colors relative ${
                 activeTab === tab.key
-                  ? 'text-yellow-400'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  ? 'text-violet-600'
+                  : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               {tab.label}
               {tab.count > 0 && (
-                <span className="ml-1 text-xs text-zinc-500">({tab.count})</span>
+                <span className="ml-1 text-xs text-gray-400">({tab.count})</span>
               )}
               {activeTab === tab.key && (
                 <motion.div
                   layoutId="tab-indicator"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-400"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-600"
                 />
               )}
             </button>
@@ -138,10 +138,11 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center h-40">
-              <p className="text-zinc-500 text-sm">Loading…</p>
+              <p className="text-gray-400 text-sm">Loading…</p>
             </div>
           ) : (
             <AnimatePresence mode="wait">
+
               {/* Images Grid */}
               {activeTab === 'images' && (
                 <motion.div
@@ -149,10 +150,10 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
-                  className="grid grid-cols-3 gap-1"
+                  className="grid grid-cols-3 gap-1.5"
                 >
                   {images.length === 0 ? (
-                    <div className="col-span-3 text-center text-zinc-600 py-12 text-sm">
+                    <div className="col-span-3 text-center text-gray-400 py-12 text-sm">
                       No images yet
                     </div>
                   ) : images.map((img, i) => (
@@ -161,7 +162,7 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: i * 0.03 }}
-                      className="aspect-square bg-zinc-800 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition"
+                      className="aspect-square bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-80 transition shadow-sm"
                       onClick={() => setFullscreenImage(buildImageSrc(img.storagePath, img.fileType))}
                     >
                       <img
@@ -185,14 +186,14 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
                   className="space-y-2"
                 >
                   {files.length === 0 ? (
-                    <div className="text-center text-zinc-600 py-12 text-sm">No files yet</div>
+                    <div className="text-center text-gray-400 py-12 text-sm">No files yet</div>
                   ) : files.map((file, i) => (
                     <motion.div
                       key={file.id || i}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.04 }}
-                      className="flex items-center gap-3 bg-zinc-900 rounded-xl p-3 cursor-pointer hover:bg-zinc-800 transition"
+                      className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl p-3 cursor-pointer hover:bg-violet-50 hover:border-violet-200 transition shadow-sm"
                       onClick={() => {
                         if (file.storagePath) {
                           const mime = file.fileType || 'application/octet-stream';
@@ -211,10 +212,10 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
                     >
                       <span className="text-2xl flex-shrink-0">{getFileIcon(file.fileType)}</span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-white text-sm font-medium truncate">{file.fileName || 'File'}</p>
-                        <p className="text-zinc-500 text-xs">{formatFileSize(file.fileSizeBytes)}</p>
+                        <p className="text-gray-900 text-sm font-medium truncate">{file.fileName || 'File'}</p>
+                        <p className="text-gray-400 text-xs">{formatFileSize(file.fileSizeBytes)}</p>
                       </div>
-                      <span className="text-zinc-400 text-lg flex-shrink-0">⬇</span>
+                      <span className="text-violet-500 text-lg flex-shrink-0">⬇</span>
                     </motion.div>
                   ))}
                 </motion.div>
@@ -230,24 +231,25 @@ export default function MediaLinksFilesPage({ chatId, onBack }: Props) {
                   className="space-y-2"
                 >
                   {links.length === 0 ? (
-                    <div className="text-center text-zinc-600 py-12 text-sm">No links yet</div>
+                    <div className="text-center text-gray-400 py-12 text-sm">No links yet</div>
                   ) : links.map((link, i) => (
                     <motion.div
                       key={link.id || i}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.04 }}
-                      className="bg-zinc-900 rounded-xl p-3 hover:bg-zinc-800 transition cursor-pointer"
+                      className="bg-gray-50 border border-gray-100 rounded-xl p-3 hover:bg-violet-50 hover:border-violet-200 transition cursor-pointer shadow-sm"
                       onClick={() => window.open(link.url || '#', '_blank')}
                     >
-                      <p className="text-blue-400 text-sm break-all line-clamp-2">{link.url}</p>
+                      <p className="text-violet-600 text-sm break-all line-clamp-2">{link.url}</p>
                       {link.previewTitle && (
-                        <p className="text-zinc-400 text-xs mt-1 truncate">{link.previewTitle}</p>
+                        <p className="text-gray-400 text-xs mt-1 truncate">{link.previewTitle}</p>
                       )}
                     </motion.div>
                   ))}
                 </motion.div>
               )}
+
             </AnimatePresence>
           )}
         </div>

@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import type { AppDispatch, RootState } from '../../store';
+import { useDispatch } from 'react-redux';
+import type { AppDispatch } from '../../store';
 import type { Message } from '../../types/chat.types';
 import { chatService } from '../../services/chat.service';
 import { deleteMessageLocally } from '../../store/slices/chat.slice';
@@ -11,26 +11,30 @@ interface Props {
   isMe: boolean;
 }
 
-function MessageTicks({ status }: { status: string }) {
+// ── Ticks ─────────────────────────────────────────────────────────────────────
+
+function MessageTicks({ status, isMe }: { status: string; isMe: boolean }) {
   if (status === 'READ') {
-    return <span style={{ color: '#53bdeb' }} className="text-xs font-bold leading-none">✓✓</span>;
+    return <span style={{ color: isMe ? '#c4b5fd' : '#3b82f6' }} className="text-xs font-bold leading-none">✓✓</span>;
   }
   if (status === 'DELIVERED') {
-    return <span className="text-zinc-400 text-xs font-bold leading-none">✓✓</span>;
+    return <span className={`text-xs font-bold leading-none ${isMe ? 'text-purple-200/70' : 'text-gray-400'}`}>✓✓</span>;
   }
-  return <span className="text-zinc-400 text-xs leading-none">✓</span>;
+  return <span className={`text-xs leading-none ${isMe ? 'text-purple-200/70' : 'text-gray-400'}`}>✓</span>;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function getFileIcon(fileType: string | null | undefined): string {
-  if (!fileType) return '✚';
-  if (fileType.includes('pdf')) return '📄';
+  if (!fileType) return '📎';
+  if (fileType.includes('pdf'))   return '📄';
   if (fileType.includes('word') || fileType.includes('doc')) return '📝';
   if (fileType.includes('excel') || fileType.includes('sheet')) return '📊';
   if (fileType.includes('zip') || fileType.includes('rar')) return '🗜️';
   if (fileType.includes('video')) return '🎥';
   if (fileType.includes('audio')) return '🎵';
-  if (fileType.includes('text')) return '📃';
-  return '✚';
+  if (fileType.includes('text'))  return '📃';
+  return '📎';
 }
 
 function formatFileSize(bytes: number | null | undefined): string {
@@ -40,111 +44,51 @@ function formatFileSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildImageSrc(storagePath: string | null | undefined, fileType: string | null | undefined): string {
-  if (!storagePath) return '';
-  if (storagePath.startsWith('data:')) return storagePath;
-  if (storagePath.startsWith('blob:')) return storagePath;
-  const mime = fileType || 'image/jpeg';
-  return `data:${mime};base64,${storagePath}`;
+function buildImageSrc(path: string | null | undefined, type: string | null | undefined): string {
+  if (!path) return '';
+  if (path.startsWith('data:') || path.startsWith('blob:')) return path;
+  return `data:${type || 'image/jpeg'};base64,${path}`;
 }
 
-function downloadFromBase64(storagePath: string, fileName: string, fileType: string | null | undefined) {
+function buildMediaSrc(path: string | null | undefined, type: string | null | undefined): string {
+  if (!path) return '';
+  if (path.startsWith('blob:') || path.startsWith('data:')) return path;
+  return `data:${type || 'application/octet-stream'};base64,${path}`;
+}
+
+function downloadBase64(path: string, name: string, type: string | null | undefined) {
   try {
-    if (storagePath.startsWith('blob:') || storagePath.startsWith('data:')) {
-      const a = document.createElement('a');
-      a.href = storagePath;
-      a.download = fileName;
-      a.click();
-      return;
+    if (path.startsWith('blob:') || path.startsWith('data:')) {
+      const a = document.createElement('a'); a.href = path; a.download = name; a.click(); return;
     }
-    const mime = fileType || 'application/octet-stream';
-    const binary = atob(storagePath);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.click();
+    const mime = type || 'application/octet-stream';
+    const bytes = new Uint8Array(atob(path).split('').map(c => c.charCodeAt(0)));
+    const url   = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    const a     = document.createElement('a'); a.href = url; a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-  } catch (err) {
-    console.error('Download failed:', err);
-  }
-}
-
-function buildMediaSrc(storagePath: string | null | undefined, fileType: string | null | undefined): string {
-  if (!storagePath) return '';
-  if (storagePath.startsWith('blob:') || storagePath.startsWith('data:')) return storagePath;
-  const mime = fileType || 'application/octet-stream';
-  return `data:${mime};base64,${storagePath}`;
+  } catch { /* ignore */ }
 }
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
-interface ContextMenuProps {
-  isMe: boolean;
-  message: Message;
-  onClose: () => void;
-  onEdit: () => void;
-}
-
-function MessageContextMenu({ isMe, message, onClose, onEdit }: ContextMenuProps) {
+function MessageContextMenu({ isMe, message, onClose, onEdit }: {
+  isMe: boolean; message: Message; onClose: () => void; onEdit: () => void;
+}) {
   const dispatch = useDispatch<AppDispatch>();
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef  = useRef<HTMLDivElement>(null);
 
-  // 5-minute edit window check
   const canEdit = isMe && (() => {
-    try {
-      const sentAt = new Date(message.sentAt).getTime();
-      const now = Date.now();
-      return (now - sentAt) < 5 * 60 * 1000;
-    } catch {
-      return false;
-    }
+    try { return (Date.now() - new Date(message.sentAt).getTime()) < 5 * 60 * 1000; }
+    catch { return false; }
   })();
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+    const h = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
-
-  const handleCopy = () => {
-    if (message.content) {
-      navigator.clipboard.writeText(message.content).catch(() => { });
-    }
-    onClose();
-  };
-
-  const handleDeleteForMe = async () => {
-    try {
-      await chatService.deleteForMe(message.id);
-      dispatch(deleteMessageLocally(message.id));
-    } catch (err) {
-      console.error('Delete for me failed:', err);
-    }
-    onClose();
-  };
-
-  const handleDeleteForEveryone = async () => {
-    try {
-      await chatService.deleteForEveryone(message.id);
-      // Socket will broadcast DELETE event — no local dispatch needed
-    } catch (err) {
-      console.error('Delete for everyone failed:', err);
-    }
-    onClose();
-  };
-
-  const handleEdit = () => {
-    onEdit();
-    onClose();
-  };
 
   return (
     <motion.div
@@ -153,112 +97,63 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: ContextMenuProps
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.92, y: -4 }}
       transition={{ duration: 0.1 }}
-      className={`absolute top-full mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden min-w-[160px] ${isMe ? 'right-0' : 'left-0'}`}
+      className={`absolute top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden min-w-[155px] ${isMe ? 'right-0' : 'left-0'}`}
     >
-      {/* Copy — always available */}
-      <button
-        onClick={handleCopy}
-        className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-zinc-800 transition flex items-center gap-2"
-      >
-        <span>📋</span> Copy
+      <button onClick={() => { if (message.content) navigator.clipboard.writeText(message.content).catch(() => {}); onClose(); }}
+        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+        📋 Copy
       </button>
-
-      {/* Edit — own messages within 5 min only */}
       {canEdit && (
-        <button
-          onClick={handleEdit}
-          className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-zinc-800 transition flex items-center gap-2"
-        >
-          <span>✏️</span> Edit
+        <button onClick={() => { onEdit(); onClose(); }}
+          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+          ✏️ Edit
         </button>
       )}
-
-      {/* Delete for me — always available */}
-      <button
-        onClick={handleDeleteForMe}
-        className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-800 transition flex items-center gap-2"
-      >
-        <span>🗑️</span> Delete for Me
+      <button onClick={async () => { try { await chatService.deleteForMe(message.id); dispatch(deleteMessageLocally(message.id)); } catch {} onClose(); }}
+        className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition flex items-center gap-2">
+        🗑️ Delete for Me
       </button>
-
-      {/* Delete for everyone — own messages only */}
       {isMe && (
-        <button
-          onClick={handleDeleteForEveryone}
-          className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-zinc-800 transition flex items-center gap-2 border-t border-zinc-700"
-        >
-          <span>❌</span> Delete for Everyone
+        <button onClick={async () => { try { await chatService.deleteForEveryone(message.id); } catch {} onClose(); }}
+          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition flex items-center gap-2 border-t border-gray-100">
+          ❌ Delete for Everyone
         </button>
       )}
     </motion.div>
   );
 }
 
-// ── Inline Edit Input ─────────────────────────────────────────────────────────
+// ── Inline Edit ───────────────────────────────────────────────────────────────
 
-interface EditInputProps {
-  message: Message;
-  onCancel: () => void;
-  onSaved: (newContent: string) => void;
-}
-
-function EditInput({ message, onCancel, onSaved }: EditInputProps) {
-  const [value, setValue] = useState(message.content || '');
+function EditInput({ message, onCancel, onSaved }: {
+  message: Message; onCancel: () => void; onSaved: (v: string) => void;
+}) {
+  const [value, setValue]   = useState(message.content || '');
   const [saving, setSaving] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
 
-  const handleSave = async () => {
-    const trimmed = value.trim();
-    if (!trimmed || trimmed === message.content) {
-      onCancel();
-      return;
-    }
+  const save = async () => {
+    const t = value.trim();
+    if (!t || t === message.content) { onCancel(); return; }
     setSaving(true);
-    try {
-      await chatService.editMessage(message.id, trimmed);
-      onSaved(trimmed);
-    } catch (err) {
-      console.error('Edit failed:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSave();
-    }
-    if (e.key === 'Escape') onCancel();
+    try { await chatService.editMessage(message.id, t); onSaved(t); }
+    catch { /* ignore */ }
+    finally { setSaving(false); }
   };
 
   return (
     <div className="flex flex-col gap-1 w-full">
-      <textarea
-        ref={inputRef}
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
+      <textarea ref={ref} value={value} onChange={e => setValue(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === 'Escape') onCancel(); }}
         rows={2}
-        className="w-full bg-zinc-900 text-white text-sm rounded-xl px-3 py-2 border border-yellow-500/50 focus:outline-none focus:border-yellow-400 resize-none"
+        className="w-full bg-white text-gray-800 text-sm rounded-xl px-3 py-2 border border-purple-300 focus:outline-none focus:border-purple-500 resize-none"
       />
       <div className="flex gap-2 justify-end">
-        <button
-          onClick={onCancel}
-          className="text-xs text-zinc-400 hover:text-white px-2 py-1 rounded transition"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded-lg transition disabled:opacity-50"
-        >
+        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded transition">Cancel</button>
+        <button onClick={save} disabled={saving}
+          className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg transition disabled:opacity-50">
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
@@ -266,210 +161,157 @@ function EditInput({ message, onCancel, onSaved }: EditInputProps) {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function MessageBubble({ message, isMe }: Props) {
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
-  const [showMenu, setShowMenu] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [fullscreen, setFullscreen]     = useState<string | null>(null);
+  const [showMenu, setShowMenu]         = useState(false);
+  const [isEditing, setIsEditing]       = useState(false);
   const [localContent, setLocalContent] = useState<string | null>(null);
-  const [localEdited, setLocalEdited] = useState(false);
+  const [localEdited, setLocalEdited]   = useState(false);
   const [localEditedAt, setLocalEditedAt] = useState<string | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const content = localContent ?? message.content;
-  const isEdited = localEdited || message.isEdited;
+  const content  = localContent ?? message.content;
+  const isEdited = localEdited  || message.isEdited;
   const editedAt = localEditedAt || message.editedAt;
 
-  const handleSaved = useCallback((newContent: string) => {
-    setLocalContent(newContent);
-    setLocalEdited(true);
-    setLocalEditedAt(new Date().toISOString());
-    setIsEditing(false);
+  const handleSaved = useCallback((v: string) => {
+    setLocalContent(v); setLocalEdited(true); setLocalEditedAt(new Date().toISOString()); setIsEditing(false);
   }, []);
 
-  const formatTime = (ts: string) => {
-    try {
-      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch { return ''; }
+  const fmt = (ts: string) => {
+    try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+    catch { return ''; }
   };
 
   if (message.messageType === 'GROUP_EVENT') {
-    return (
-      <div className="text-center text-xs text-zinc-500 py-1">
-        {message.content}
-      </div>
-    );
+    return <div className="text-center text-xs text-gray-400 py-1">{message.content}</div>;
   }
 
   if (message.isDeleted) {
     return (
       <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-        <div className="px-4 py-2 rounded-2xl bg-zinc-800/50 text-zinc-500 text-sm italic">
+        <div className="px-4 py-2 rounded-2xl bg-gray-100 text-gray-400 text-sm italic">
           🚫 This message was deleted
         </div>
       </div>
     );
   }
 
-  const att = message.attachment;
+  const att     = message.attachment;
   const isVideo = att?.fileType?.includes('video');
   const isAudio = att?.fileType?.includes('audio');
 
+  // ── Bubble styles matching image 2 ─────────────────────────────────────────
+  // Sent (me):      purple, right-aligned, no bottom-right radius
+  // Received:       white with subtle shadow, left-aligned, no bottom-left radius
+  const bubbleClass = isMe
+    ? 'bg-purple-600 text-white rounded-3xl rounded-br-md shadow-md'
+    : 'bg-white text-gray-800 rounded-3xl rounded-bl-md shadow-sm border border-gray-100';
+
   return (
     <>
-      {/* Fullscreen image viewer */}
-      {fullscreenImage && (
-        <div
-          className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4"
-          onClick={() => setFullscreenImage(null)}
-        >
-          <img
-            src={fullscreenImage}
-            alt="fullscreen"
-            className="max-w-full max-h-full object-contain rounded-xl"
-            onClick={e => e.stopPropagation()}
-          />
-          <button
-            className="absolute top-4 right-4 text-white text-5xl leading-none hover:text-zinc-300 transition"
-            onClick={() => setFullscreenImage(null)}
-          >×</button>
+      {/* Fullscreen image */}
+      {fullscreen && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4"
+             onClick={() => setFullscreen(null)}>
+          <img src={fullscreen} alt="fullscreen" className="max-w-full max-h-full object-contain rounded-xl"
+               onClick={e => e.stopPropagation()} />
+          <button className="absolute top-4 right-4 text-white text-5xl" onClick={() => setFullscreen(null)}>×</button>
         </div>
       )}
 
       <motion.div
-        ref={wrapperRef}
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.15 }}
-        className={`flex ${isMe ? 'justify-end' : 'justify-start'} relative`}
+        transition={{ duration: 0.12 }}
+        className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}
       >
-        {/* ── Down arrow button — appears on hover ── */}
-        <div className={`relative flex items-start gap-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+        <div className={`relative flex items-end gap-1.5 max-w-[75%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
 
           {/* Bubble */}
-          <div
-            className={`
-  min-w-[80px] max-w-[350px] rounded-2xl relative overflow-hidden
-  ${message.messageType === 'IMAGE' ? '' : 'px-4 py-2'}
-  ${isMe ? 'bg-green-700 rounded-br-sm' : 'bg-zinc-800 rounded-bl-sm'}
-`}
-          >
-            {/* Sender name in group chats */}
-            {/* Sender name in incoming messages */}
-            {!isMe && (
-              <p
-                className={`text-xs text-green-400 font-medium mb-1 ${message.messageType === 'IMAGE' ? 'px-3 pt-2' : ''
-                  }`}
-              >
-                {message.senderUsername?.trim() || 'Unknown User'}
+          <div className={`relative ${message.messageType === 'IMAGE' ? '' : 'px-4 py-2.5'} ${bubbleClass} min-w-[60px]`}>
+
+            {/* Sender name — group incoming */}
+            {!isMe && message.senderUsername && (
+              <p className={`text-xs font-semibold mb-1 text-purple-500 ${message.messageType === 'IMAGE' ? 'px-3 pt-2' : ''}`}>
+                {message.senderUsername.trim()}
               </p>
             )}
 
-            {/* Reply quote */}
+            {/* Reply */}
             {message.replyToId && (
-              <div className="border-l-2 border-green-400 pl-2 mb-2 text-xs text-zinc-400">
+              <div className={`border-l-2 pl-2 mb-2 text-xs ${isMe ? 'border-purple-300 text-purple-200' : 'border-purple-400 text-gray-400'}`}>
                 Replying to a message
               </div>
             )}
 
-            {/* Editing mode */}
             {isEditing ? (
-              <EditInput
-                message={{ ...message, content }}
-                onCancel={() => setIsEditing(false)}
-                onSaved={handleSaved}
-              />
+              <EditInput message={{ ...message, content }} onCancel={() => setIsEditing(false)} onSaved={handleSaved} />
             ) : (
               <>
                 {/* TEXT */}
                 {message.messageType === 'TEXT' && content && (
-                  <p  className="
-    text-white text-sm leading-5
-    whitespace-pre-wrap break-words
-    max-w-[35ch]
-  ">{content}</p>
+                  <p className="text-sm leading-[1.5] whitespace-pre-wrap break-words">{content}</p>
                 )}
 
                 {/* IMAGE */}
                 {message.messageType === 'IMAGE' && (
-                  <div className="flex flex-col">
+                  <div>
                     {att?.storagePath ? (
-                      <img
-                        src={buildImageSrc(att.storagePath, att.fileType)}
-                        alt={att.fileName || 'image'}
-                        className="block w-full max-w-[280px] max-h-[320px] object-cover cursor-pointer hover:opacity-95 transition"
-                        onClick={() => setFullscreenImage(buildImageSrc(att.storagePath, att.fileType))}
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
+                      <img src={buildImageSrc(att.storagePath, att.fileType)} alt={att.fileName || 'image'}
+                           className="block w-full max-w-[260px] max-h-[300px] object-cover cursor-pointer hover:opacity-95 transition rounded-3xl"
+                           onClick={() => setFullscreen(buildImageSrc(att.storagePath, att.fileType))}
+                           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     ) : (
-                      <div className="w-48 h-32 bg-zinc-700 flex items-center justify-center text-zinc-500 text-sm">
-                        Image unavailable
-                      </div>
+                      <div className="w-48 h-32 bg-gray-100 flex items-center justify-center text-gray-400 text-sm rounded-2xl">Image unavailable</div>
                     )}
-                    {content && (
-                      <p className="text-white text-sm px-3 pt-1 pb-2 whitespace-pre-wrap break-words">{content}</p>
-                    )}
-                    {/* Timestamp inside image bubble with padding */}
+                    {content && <p className="text-sm px-3 pt-1 pb-1 whitespace-pre-wrap break-words">{content}</p>}
                   </div>
                 )}
 
                 {/* FILE */}
                 {message.messageType === 'FILE' && att && !isVideo && !isAudio && (
-                  <div
-                    className="flex items-center gap-3 bg-black/20 rounded-xl p-3 cursor-pointer hover:bg-black/30 transition min-w-[200px]"
-                    onClick={() => { if (att.storagePath) downloadFromBase64(att.storagePath, att.fileName || 'file', att.fileType); }}
-                  >
-                    <span className="text-3xl flex-shrink-0">{getFileIcon(att.fileType)}</span>
+                  <div className={`flex items-center gap-3 rounded-2xl p-3 cursor-pointer transition min-w-[190px]
+                                   ${isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-50 hover:bg-gray-100'}`}
+                       onClick={() => att.storagePath && downloadBase64(att.storagePath, att.fileName || 'file', att.fileType)}>
+                    <span className="text-2xl">{getFileIcon(att.fileType)}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-white text-sm font-medium truncate max-w-[160px]">{att.fileName || 'File'}</p>
-                      <p className="text-zinc-400 text-xs">{formatFileSize(att.fileSizeBytes)}</p>
+                      <p className={`text-sm font-medium truncate max-w-[150px] ${isMe ? 'text-white' : 'text-gray-800'}`}>{att.fileName || 'File'}</p>
+                      <p className={`text-xs ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>{formatFileSize(att.fileSizeBytes)}</p>
                     </div>
-                    <span className="text-zinc-300 text-lg flex-shrink-0">⬇</span>
+                    <span className={`text-lg ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>⬇</span>
                   </div>
                 )}
 
                 {/* VIDEO */}
                 {message.messageType === 'FILE' && att && isVideo && (
-                  <div className="rounded-xl overflow-hidden max-w-[280px]">
-                    <video controls className="w-full rounded-xl max-h-[220px]" src={buildMediaSrc(att.storagePath, att.fileType)}>
+                  <div className="rounded-2xl overflow-hidden max-w-[260px]">
+                    <video controls className="w-full max-h-[200px]" src={buildMediaSrc(att.storagePath, att.fileType)}>
                       Your browser does not support video.
                     </video>
-                    {att.fileName && <p className="text-zinc-400 text-xs mt-1 truncate">{att.fileName}</p>}
                   </div>
                 )}
 
                 {/* AUDIO */}
                 {message.messageType === 'FILE' && att && isAudio && (
-                  <div className="min-w-[220px]">
+                  <div className="min-w-[200px]">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xl">🎵</span>
-                      <p className="text-white text-sm truncate max-w-[160px]">{att.fileName || 'Audio'}</p>
+                      <span>🎵</span>
+                      <p className={`text-sm truncate max-w-[140px] ${isMe ? 'text-white' : 'text-gray-800'}`}>{att.fileName || 'Audio'}</p>
                     </div>
-                    <audio controls className="w-full" src={buildMediaSrc(att.storagePath, att.fileType)}>
-                      Your browser does not support audio.
-                    </audio>
+                    <audio controls className="w-full" src={buildMediaSrc(att.storagePath, att.fileType)} />
                   </div>
                 )}
 
                 {/* LINK */}
                 {message.messageType === 'LINK' && (
                   <div>
-                    <button
-                      onClick={() => window.open(att?.url || message.content || '#', '_blank')}
-                      className="text-blue-400 underline text-sm break-all text-left"
-                    >
+                    <button onClick={() => window.open(att?.url || message.content || '#', '_blank')}
+                            className={`underline text-sm break-all text-left ${isMe ? 'text-purple-100' : 'text-blue-500'}`}>
                       {att?.url || message.content}
                     </button>
-                    {att?.previewTitle && <p className="text-zinc-300 text-xs mt-1">{att.previewTitle}</p>}
-                  </div>
-                )}
-
-                {/* CONTACT */}
-                {message.messageType === 'CONTACT' && (
-                  <div className="flex items-center gap-2 bg-zinc-700 rounded-xl p-2">
-                    <div className="w-8 h-8 rounded-full bg-zinc-600 flex items-center justify-center text-white">👤</div>
-                    <p className="text-white text-sm font-medium">{att?.fileName || 'Contact'}</p>
+                    {att?.previewTitle && <p className={`text-xs mt-1 ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>{att.previewTitle}</p>}
                   </div>
                 )}
 
@@ -480,60 +322,40 @@ export default function MessageBubble({ message, isMe }: Props) {
               </>
             )}
 
-            {/* Timestamp + ticks + edited label */}
+            {/* Time + ticks */}
             {!isEditing && (
-              <div className={`flex items-center justify-end gap-1 mt-1 flex-wrap ${message.messageType === 'IMAGE' ? 'px-3 pb-2' : ''}`}>
-                {isEdited && editedAt && (
-                  <span className="text-xs text-zinc-400 italic">
-                    edited · {formatTime(editedAt)}
+              <div className={`flex items-center justify-end gap-1 mt-1 ${message.messageType === 'IMAGE' ? 'px-3 pb-2' : ''}`}>
+                {isEdited && (
+                  <span className={`text-[11px] italic ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
+                    edited{editedAt ? ` · ${fmt(editedAt)}` : ''}
                   </span>
                 )}
-                {isEdited && !editedAt && (
-                  <span className="text-xs text-zinc-400 italic">edited</span>
-                )}
-                <span className="text-xs text-zinc-400">{formatTime(message.sentAt)}</span>
-                {isMe && <MessageTicks status={message.status} />}
+                <span className={`text-[11px] ${isMe ? 'text-purple-100/80' : 'text-gray-400'}`}>{fmt(message.sentAt)}</span>
+                {isMe && <MessageTicks status={message.status} isMe={isMe} />}
               </div>
             )}
           </div>
 
-          {/* ── Arrow button — shows on group hover ── */}
-          {/* ── WhatsApp-style inside hover arrow ── */}
-{!isEditing && (
-  <div
-  className={`
-    absolute top-0 left-1 z-20
-    opacity-0 hover:opacity-100
-    transition-opacity duration-150
-  `}
->
-    <button
-      onClick={() => setShowMenu(prev => !prev)}
-     className={`
-  opacity-0 hover:opacity-100 transition-all duration-150
-w-7 h-7 flex items-center justify-center
-text-zinc-200 hover:text-white
-text-[16px]
-bg-black/10 hover:bg-black/20
-rounded-full
-`}
-      title="Message options"
-    >
-      ▼
-    </button>
-
-    <AnimatePresence>
-      {showMenu && (
-        <MessageContextMenu
-          isMe={isMe}
-          message={message}
-          onClose={() => setShowMenu(false)}
-          onEdit={() => setIsEditing(true)}
-        />
-      )}
-    </AnimatePresence>
-  </div>
-)}
+          {/* Hover chevron for context menu */}
+          {!isEditing && (
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 mb-2 relative flex-shrink-0">
+              <button
+                onClick={() => setShowMenu(p => !p)}
+                className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              <AnimatePresence>
+                {showMenu && (
+                  <MessageContextMenu isMe={isMe} message={message}
+                    onClose={() => setShowMenu(false)} onEdit={() => setIsEditing(true)} />
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </motion.div>
     </>

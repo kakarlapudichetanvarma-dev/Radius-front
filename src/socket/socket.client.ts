@@ -1,6 +1,6 @@
 import { Client } from '@stomp/stompjs';
 import { storage } from '../utils/storage.utils';
-
+import { showMessageNotification } from '../utils/notifications.utils';
 export const socketClient = new Client({
   brokerURL: 'ws://localhost:8084/ws',
   reconnectDelay: 500,

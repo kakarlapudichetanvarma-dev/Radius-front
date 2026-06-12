@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store';
 import { updateProfile, logout } from '../../store/slices/auth.slice';
@@ -9,14 +9,9 @@ import { updateGroupInfo } from '../../store/slices/group.slice';
 
 interface Props {
   onClose: () => void;
-
-  // ✅ Optional group mode
   groupMode?: boolean;
-
   groupId?: string;
-
   groupName?: string;
-
   groupProfilePicture?: string | null;
 }
 
@@ -27,408 +22,200 @@ export default function ProfileModal({
   groupName,
   groupProfilePicture,
 }: Props) {
-
   const dispatch = useDispatch<AppDispatch>();
+  const { user, updatingProfile, updateError } = useSelector((state: RootState) => state.auth);
 
-  const { user, updatingProfile, updateError } = useSelector(
-    (state: RootState) => state.auth
-  );
-
-  const [username, setUsername] = useState(
-    groupMode
-      ? groupName || ''
-      : user?.username || ''
-  );
-
-  const [newPassword, setNewPassword] = useState('');
+  const [username, setUsername]           = useState(groupMode ? groupName || '' : user?.username || '');
+  const [newPassword, setNewPassword]     = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [successMsg, setSuccessMsg]       = useState('');
+  const [localError, setLocalError]       = useState('');
 
-  const [previewPic, setPreviewPic] = useState<string | null>(
-    groupMode
-      ? groupProfilePicture || null
-      : user?.profilePicture
-        ? `http://localhost:8080${user.profilePicture}?t=${Date.now()}`
-        : null
-  );
+  // ── Avatar display (no upload) ────────────────────────────────────────────
+  const avatarSrc = groupMode
+    ? groupProfilePicture || null
+    : user?.profilePicture
+      ? `http://localhost:8080${user.profilePicture}?t=${Date.now()}`
+      : null;
 
-  const [picFile, setPicFile] = useState<File | null>(null);
-
-  const [successMsg, setSuccessMsg] = useState('');
-
-  const [localError, setLocalError] = useState('');
-
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handlePicChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-
-    const file = e.target.files?.[0];
-
-    if (!file) return;
-
-    setPicFile(file);
-
-    setPreviewPic(URL.createObjectURL(file));
-  };
+  const displayName = groupMode ? (groupName || 'Group') : (user?.username || '?');
 
   const handleSave = async () => {
-
     setLocalError('');
-
     setSuccessMsg('');
 
-    // ✅ GROUP MODE
     if (groupMode && groupId) {
-
-      let profilePictureBase64: string | undefined;
-
-      if (picFile) {
-
-        profilePictureBase64 =
-          await new Promise((resolve) => {
-
-            const reader = new FileReader();
-
-            reader.onloadend = () => {
-              resolve(reader.result as string);
-            };
-
-            reader.readAsDataURL(picFile);
-          });
-      }
-
-      const result = await dispatch(
-        updateGroupInfo({
-          groupId,
-          data: {
-            name: username,
-            profilePicture: profilePictureBase64,
-          },
-        })
-      );
-
+      const result = await dispatch(updateGroupInfo({
+        groupId,
+        data: { name: username },
+      }));
       if (updateGroupInfo.fulfilled.match(result)) {
-
-        setSuccessMsg(
-          'Group updated successfully!'
-        );
-
+        setSuccessMsg('Group updated successfully!');
         dispatch(fetchChats(user?.username || ''));
-
       } else {
-
-        setLocalError(
-          result.payload as string ||
-          'Failed to update group'
-        );
+        setLocalError((result.payload as string) || 'Failed to update group');
       }
-
       return;
     }
 
-    // ✅ EXISTING USER PROFILE LOGIC
-
     if (newPassword && newPassword !== confirmPassword) {
-
       setLocalError('Passwords do not match.');
-
       return;
     }
 
     const formData = new FormData();
-
     formData.append('username', username);
+    if (newPassword) formData.append('password', newPassword);
 
-    if (newPassword) {
-      formData.append('password', newPassword);
-    }
-
-    if (picFile) {
-      formData.append('profilePicture', picFile);
-    }
-
-    const result = await dispatch(
-      updateProfile(formData)
-    );
-
+    const result = await dispatch(updateProfile(formData));
     if (updateProfile.fulfilled.match(result)) {
-
-      setSuccessMsg(
-        'Profile updated successfully!'
-      );
-
+      setSuccessMsg('Profile updated successfully!');
       dispatch(fetchFriends());
-
       dispatch(fetchChats(user?.username || ''));
-
     } else {
-
-      setLocalError(
-        result.payload as string ||
-        'Failed to update profile'
-      );
+      setLocalError((result.payload as string) || 'Failed to update profile');
     }
   };
 
-  const handleLogout = () => {
-
-    dispatch(logout());
-
-    onClose();
-  };
+  const handleLogout = () => { dispatch(logout()); onClose(); };
 
   return (
     <AnimatePresence>
-
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
-        onClick={(e) =>
-          e.target === e.currentTarget &&
-          onClose()
-        }
+        className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+        onClick={e => e.target === e.currentTarget && onClose()}
       >
-
         <motion.div
-          initial={{
-            scale: 0.92,
-            opacity: 0,
-            y: 20
-          }}
-          animate={{
-            scale: 1,
-            opacity: 1,
-            y: 0
-          }}
-          exit={{
-            scale: 0.92,
-            opacity: 0,
-            y: 20
-          }}
-          transition={{
-            type: 'spring',
-            damping: 20,
-            stiffness: 300
-          }}
-          className="bg-zinc-900 rounded-2xl w-full max-w-md shadow-2xl border border-zinc-800 overflow-hidden"
+          initial={{ scale: 0.92, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.92, opacity: 0, y: 20 }}
+          transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+          className="bg-white rounded-2xl w-full max-w-md shadow-xl border border-gray-100 overflow-hidden"
         >
-
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-
-            <h2 className="text-white font-semibold text-lg">
-              {groupMode
-                ? 'Group Settings'
-                : 'Profile'}
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <h2 className="text-gray-900 font-semibold text-lg">
+              {groupMode ? 'Group Settings' : 'Profile'}
             </h2>
-
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+            >
+              ✕
+            </button>
           </div>
 
           <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
 
-            {/* Avatar */}
-            <div className="flex flex-col items-center gap-3">
-
-              <div
-                className="relative w-24 h-24 rounded-full cursor-pointer group"
-                onClick={() =>
-                  fileRef.current?.click()
-                }
-              >
-
-                {previewPic ? (
-
-                  <img
-                    key={previewPic}
-                    src={previewPic}
-                    alt="profile"
-                    className="w-24 h-24 rounded-full object-cover border-2 border-zinc-700"
-                    onError={() =>
-                      setPreviewPic(null)
-                    }
-                  />
-
-                ) : (
-
-                  <div className="w-24 h-24 rounded-full bg-green-600 flex items-center justify-center text-white text-3xl font-bold border-2 border-zinc-700">
-
-                    {username
-                      ?.charAt(0)
-                      .toUpperCase() || '?'}
-
-                  </div>
-                )}
-
-                <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-sm font-medium">
-                  Change
+            {/* Avatar — display only, no upload */}
+            <div className="flex flex-col items-center gap-2">
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt="profile"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-violet-200"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold">
+                  {displayName.charAt(0).toUpperCase()}
                 </div>
-
-              </div>
-
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePicChange}
-              />
-
-              <p className="text-zinc-500 text-xs">
-                Click photo to change
-              </p>
-
+              )}
             </div>
 
-            {/* Username */}
+            {/* Username / Group Name */}
             <div>
-
-              <label className="text-zinc-400 text-xs mb-1 block">
-                {groupMode
-                  ? 'Group Name'
-                  : 'Username'}
+              <label className="text-gray-500 text-xs font-medium mb-1 block">
+                {groupMode ? 'Group Name' : 'Username'}
               </label>
-
               <input
                 value={username}
-                onChange={e =>
-                  setUsername(e.target.value)
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 focus:border-green-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition"
-                placeholder={
-                  groupMode
-                    ? 'Enter group name'
-                    : 'Enter username'
-                }
+                onChange={e => setUsername(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl px-4 py-2.5 text-gray-900 text-sm outline-none transition"
+                placeholder={groupMode ? 'Enter group name' : 'Enter username'}
               />
-
             </div>
 
-            {/* USER ONLY */}
+            {/* User-only fields */}
             {!groupMode && (
-
               <>
-
                 <div className="space-y-3">
-
                   <div>
-
-                    <label className="text-zinc-400 text-xs mb-1 block">
-                      Email
-                    </label>
-
-                    <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-2.5 text-zinc-500 text-sm">
+                    <label className="text-gray-500 text-xs font-medium mb-1 block">Email</label>
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-gray-400 text-sm">
                       {user?.email}
                     </div>
-
                   </div>
-
                   <div>
-
-                    <label className="text-zinc-400 text-xs mb-1 block">
-                      Phone Number
-                    </label>
-
-                    <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-2.5 text-zinc-500 text-sm">
+                    <label className="text-gray-500 text-xs font-medium mb-1 block">Phone Number</label>
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-gray-400 text-sm">
                       {user?.phoneNumber}
                     </div>
-
                   </div>
-
                 </div>
 
                 <div className="space-y-3">
-
                   <div>
-
-                    <label className="text-zinc-400 text-xs mb-1 block">
-                      New Password
-                    </label>
-
+                    <label className="text-gray-500 text-xs font-medium mb-1 block">New Password</label>
                     <input
                       type="password"
                       value={newPassword}
-                      onChange={e =>
-                        setNewPassword(e.target.value)
-                      }
-                      className="w-full bg-zinc-800 border border-zinc-700 focus:border-green-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition"
+                      onChange={e => setNewPassword(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl px-4 py-2.5 text-gray-900 text-sm outline-none transition"
                       placeholder="Leave blank to keep current"
                     />
-
                   </div>
-
                   <div>
-
-                    <label className="text-zinc-400 text-xs mb-1 block">
-                      Confirm Password
-                    </label>
-
+                    <label className="text-gray-500 text-xs font-medium mb-1 block">Confirm Password</label>
                     <input
                       type="password"
                       value={confirmPassword}
-                      onChange={e =>
-                        setConfirmPassword(e.target.value)
-                      }
-                      className="w-full bg-zinc-800 border border-zinc-700 focus:border-green-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition"
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl px-4 py-2.5 text-gray-900 text-sm outline-none transition"
                       placeholder="Confirm new password"
                     />
-
                   </div>
-
                 </div>
-
               </>
-
             )}
 
+            {/* Messages */}
             {(localError || updateError) && (
-              <p className="text-red-400 text-sm text-center">
+              <p className="text-red-500 text-sm text-center bg-red-50 border border-red-100 rounded-xl py-2">
                 {localError || updateError}
               </p>
             )}
-
             {successMsg && (
-              <p className="text-green-400 text-sm text-center">
+              <p className="text-violet-600 text-sm text-center bg-violet-50 border border-violet-100 rounded-xl py-2">
                 {successMsg}
               </p>
             )}
 
+            {/* Actions */}
             <div className="space-y-2 pt-1">
-
               <button
                 onClick={handleSave}
                 disabled={updatingProfile}
-                className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2.5 rounded-xl font-medium text-sm transition"
+                className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white py-2.5 rounded-xl font-medium text-sm transition shadow-sm shadow-violet-500/30"
               >
-
-                {updatingProfile
-                  ? 'Saving...'
-                  : groupMode
-                  ? 'Save Group'
-                  : 'Save Changes'}
-
+                {updatingProfile ? 'Saving...' : groupMode ? 'Save Group' : 'Save Changes'}
               </button>
 
               {!groupMode && (
-
                 <button
                   onClick={handleLogout}
-                  className="w-full bg-zinc-800 hover:bg-red-600/20 border border-zinc-700 hover:border-red-500/50 text-zinc-400 hover:text-red-400 py-2.5 rounded-xl font-medium text-sm transition"
+                  className="w-full bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-200 text-gray-500 hover:text-red-500 py-2.5 rounded-xl font-medium text-sm transition"
                 >
                   Logout
                 </button>
-
               )}
-
             </div>
-
           </div>
-
         </motion.div>
-
       </motion.div>
-
     </AnimatePresence>
   );
 }
