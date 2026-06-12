@@ -170,10 +170,12 @@ export default function MessageBubble({ message, isMe }: Props) {
   const [localContent, setLocalContent] = useState<string | null>(null);
   const [localEdited, setLocalEdited]   = useState(false);
   const [localEditedAt, setLocalEditedAt] = useState<string | null>(null);
+  const [isHovered, setIsHovered]       = useState(false);
 
   const content  = localContent ?? message.content;
-  const isEdited = localEdited  || message.isEdited;
-  const editedAt = localEditedAt || message.editedAt;
+  // Always prefer server values (persists after refresh); local state only for optimistic UI
+  const isEdited = message.isEdited || localEdited;
+  const editedAt = message.editedAt || localEditedAt;
 
   const handleSaved = useCallback((v: string) => {
     setLocalContent(v); setLocalEdited(true); setLocalEditedAt(new Date().toISOString()); setIsEditing(false);
@@ -202,9 +204,6 @@ export default function MessageBubble({ message, isMe }: Props) {
   const isVideo = att?.fileType?.includes('video');
   const isAudio = att?.fileType?.includes('audio');
 
-  // ── Bubble styles matching image 2 ─────────────────────────────────────────
-  // Sent (me):      purple, right-aligned, no bottom-right radius
-  // Received:       white with subtle shadow, left-aligned, no bottom-left radius
   const bubbleClass = isMe
     ? 'bg-purple-600 text-white rounded-3xl rounded-br-md shadow-md'
     : 'bg-white text-gray-800 rounded-3xl rounded-bl-md shadow-sm border border-gray-100';
@@ -225,12 +224,16 @@ export default function MessageBubble({ message, isMe }: Props) {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.12 }}
-        className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}
+        className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
       >
         <div className={`relative flex items-end gap-1.5 max-w-[75%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
 
           {/* Bubble */}
-          <div className={`relative ${message.messageType === 'IMAGE' ? '' : 'px-4 py-2.5'} ${bubbleClass} min-w-[60px]`}>
+          <div
+            className={`relative ${message.messageType === 'IMAGE' ? '' : 'px-4 py-2.5'} ${bubbleClass} min-w-[60px]`}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => { setIsHovered(false); setShowMenu(false); }}
+          >
 
             {/* Sender name — group incoming */}
             {!isMe && message.senderUsername && (
@@ -322,40 +325,51 @@ export default function MessageBubble({ message, isMe }: Props) {
               </>
             )}
 
-            {/* Time + ticks */}
+            {/* Time + ticks / Chevron — mutually exclusive on hover */}
             {!isEditing && (
               <div className={`flex items-center justify-end gap-1 mt-1 ${message.messageType === 'IMAGE' ? 'px-3 pb-2' : ''}`}>
-                {isEdited && (
-                  <span className={`text-[11px] italic ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
-                    edited{editedAt ? ` · ${fmt(editedAt)}` : ''}
-                  </span>
+                {isHovered ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowMenu(p => !p)}
+                      className={`flex items-center justify-center transition-colors ${isMe ? 'text-purple-200 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}
+                      style={{ lineHeight: 0 }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <AnimatePresence>
+                      {showMenu && (
+                        <MessageContextMenu
+                          isMe={isMe}
+                          message={message}
+                          onClose={() => setShowMenu(false)}
+                          onEdit={() => setIsEditing(true)}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <>
+                    {isEdited ? (
+                      // Edited: show "edited · 10:32 AM" only — no separate sentAt
+                      <span className={`text-[11px] italic ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
+                        edited · {editedAt ? fmt(editedAt) : fmt(message.sentAt)}
+                      </span>
+                    ) : (
+                      // Not edited: show sentAt time
+                      <span className={`text-[11px] ${isMe ? 'text-purple-100/80' : 'text-gray-400'}`}>
+                        {fmt(message.sentAt)}
+                      </span>
+                    )}
+                    {isMe && <MessageTicks status={message.status} isMe={isMe} />}
+                  </>
                 )}
-                <span className={`text-[11px] ${isMe ? 'text-purple-100/80' : 'text-gray-400'}`}>{fmt(message.sentAt)}</span>
-                {isMe && <MessageTicks status={message.status} isMe={isMe} />}
               </div>
             )}
           </div>
 
-          {/* Hover chevron for context menu */}
-          {!isEditing && (
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 mb-2 relative flex-shrink-0">
-              <button
-                onClick={() => setShowMenu(p => !p)}
-                className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-              <AnimatePresence>
-                {showMenu && (
-                  <MessageContextMenu isMe={isMe} message={message}
-                    onClose={() => setShowMenu(false)} onEdit={() => setIsEditing(true)} />
-                )}
-              </AnimatePresence>
-            </div>
-          )}
         </div>
       </motion.div>
     </>

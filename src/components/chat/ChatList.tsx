@@ -195,27 +195,28 @@ function ChatItem({
               )}
               {/* WhatsApp-style small chevron — only on hover */}
               {isHovered && (
-                <button
-                  onClick={e => { e.stopPropagation(); setShowMenu(p => !p); }}
-                  className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-                  style={{ lineHeight: 0 }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M3 5L7 9L11 5"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                // Updated — plain icon, no circle, same as ChatList
+<button
+  onClick={() => setShowMenu(p => !p)}
+  className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+  style={{ lineHeight: 0 }}
+>
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 14 14"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M3 5L7 9L11 5"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+</button>
               )}
             </div>
           </div>
