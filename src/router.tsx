@@ -1,11 +1,16 @@
 import { createBrowserRouter } from 'react-router-dom';
+
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OtpPage from './pages/OtpPage';
 import ChatPage from './pages/ChatPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';   // ✅ add
-import ResetPasswordPage from './pages/ResetPasswordPage';     // ✅ add
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+
+import CommunityPage from './pages/CommunityPage';
+import CommunityDetailsPage from './pages/CommunityDetailsPage';
+
 import AuthGuard from './security/auth.guard';
 import GuestGuard from './router/GuestGuard';
 
@@ -39,7 +44,7 @@ export const router = createBrowserRouter([
     )
   },
   {
-    path: '/forgot-password',          // ✅ add
+    path: '/forgot-password',
     element: (
       <GuestGuard>
         <ForgotPasswordPage />
@@ -47,7 +52,7 @@ export const router = createBrowserRouter([
     )
   },
   {
-    path: '/reset-password',           // ✅ add
+    path: '/reset-password',
     element: (
       <GuestGuard>
         <ResetPasswordPage />
@@ -59,6 +64,28 @@ export const router = createBrowserRouter([
     element: (
       <AuthGuard>
         <ChatPage />
+      </AuthGuard>
+    )
+  },
+
+  /*
+   * Communities
+   */
+
+  {
+    path: '/communities',
+    element: (
+      <AuthGuard>
+        <CommunityPage />
+      </AuthGuard>
+    )
+  },
+
+  {
+    path: '/communities/:communityId',
+    element: (
+      <AuthGuard>
+        <CommunityDetailsPage />
       </AuthGuard>
     )
   }

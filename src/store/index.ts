@@ -13,6 +13,7 @@ import callReducer from './slices/call.slice';
 import profileReducer from './slices/profile.slice';
 import uiReducer from './slices/ui.slice'; // ← ADD
 import { initMessageEvents } from '../socket/message.events';
+import communityReducer from './slices/community.slice';
 
 export const store = configureStore({
   reducer: {
@@ -21,6 +22,7 @@ export const store = configureStore({
     friend:  friendReducer,
     group:   groupReducer,
     call:    callReducer,
+    community: communityReducer,
     profile: profileReducer,
     ui:      uiReducer, // ← ADD
   },

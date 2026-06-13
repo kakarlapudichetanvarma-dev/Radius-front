@@ -100,12 +100,6 @@ export default function ProfileModal({
             <h2 className="text-gray-900 font-semibold text-lg">
               {groupMode ? 'Group Settings' : 'Profile'}
             </h2>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
-            >
-              ✕
-            </button>
           </div>
 
           <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
