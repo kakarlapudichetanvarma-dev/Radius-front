@@ -18,6 +18,12 @@ const ProfileBar = memo(function ProfileBar() {
   const [showProfile, setShowProfile] =
     useState(false);
 
+  // Red dot: any community group chat has unread messages
+  const communityGroupUnread = useSelector(
+    (state: RootState) => state.community.communityGroupUnread
+  );
+  const hasCommunityUnread = Object.values(communityGroupUnread).some(count => count > 0);
+
   const avatarSrc = useMemo(
     () =>
       user?.profilePicture
@@ -50,7 +56,6 @@ const ProfileBar = memo(function ProfileBar() {
         "
       >
         {/* Calls */}
-
         <button
           className="
             w-10
@@ -69,13 +74,11 @@ const ProfileBar = memo(function ProfileBar() {
           <Phone size={20} />
         </button>
 
-        {/* Communities */}
-
+        {/* Communities — with red dot if unread */}
         <button
-          onClick={() =>
-            navigate('/communities')
-          }
+          onClick={() => navigate('/communities')}
           className="
+            relative
             w-10
             h-10
             rounded-full
@@ -101,21 +104,20 @@ const ProfileBar = memo(function ProfileBar() {
             strokeLinejoin="round"
           >
             <circle cx="12" cy="8" r="2.5" />
-
             <path d="M7.5 21v-1.5a4.5 4.5 0 019 0V21" />
-
             <circle cx="5" cy="9" r="2" />
-
             <path d="M1 20v-1a3.5 3.5 0 015.5-2.88" />
-
             <circle cx="19" cy="9" r="2" />
-
             <path d="M23 20v-1a3.5 3.5 0 00-5.5-2.88" />
           </svg>
+
+          {/* Red dot — shown when any community group has unread messages */}
+          {hasCommunityUnread && (
+            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+          )}
         </button>
 
         {/* AI */}
-
         <button
           className="
             w-10
@@ -135,7 +137,6 @@ const ProfileBar = memo(function ProfileBar() {
         </button>
 
         {/* Profile */}
-
         <button
           onClick={() =>
             setShowProfile(true)

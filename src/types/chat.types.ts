@@ -31,12 +31,16 @@ export interface Message {
   content: string | null;
   status: 'SENT' | 'DELIVERED' | 'READ';
   isEdited: boolean;
+  edited: boolean;        // ← ADD: raw field from server
   isDeleted: boolean;
+  deleted: boolean;       // ← ADD: raw field from server
   replyToId: string | null;
   sentAt: string;
   deliveredAt: string | null;
   readAt: string | null;
   editedAt: string | null;
+  deletedAt: string | null; // ← ADD
+  updatedAt: string | null; // ← ADD
   date: string | null;
   attachment: MediaAttachment | null;
 }

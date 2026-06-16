@@ -49,27 +49,19 @@ function buildWallpaperStyle(wallpaper?: {
   }
 }
 
-// ── WhatsApp-style empty state illustration ───────────────────────────────────
 function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-white h-full px-8">
       <div className="flex flex-col items-center text-center" style={{ maxWidth: 340 }}>
-        {/* Brand label */}
         <p className="text-violet-600 text-xs font-semibold tracking-widest uppercase mb-4">
           Radius
         </p>
-
-        {/* Bold headline */}
         <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1.2, marginBottom: 16 }}>
           Conversations, with intent.
         </h1>
-
-        {/* Subtitle */}
         <p className="text-gray-400 text-sm leading-relaxed mb-8">
           Select a chat on the left to continue, or start something new.
         </p>
-
-        {/* Buttons row */}
         <div className="flex items-center gap-5">
           <button
             className="text-white text-sm font-semibold px-6 py-2.5 rounded-full transition-colors duration-200"
@@ -109,6 +101,7 @@ export default function ChatWindow({ onFilePrepared }: Props) {
   const wallpaperStyle = useMemo(() => buildWallpaperStyle(wallpaper), [wallpaper]);
   const typingUsers    = useTypingUsers(selectedChatId);
 
+  // Subscribe to all chats in the chat list (private + regular groups)
   useEffect(() => {
     chats?.forEach(c => {
       if (!c.chatId.startsWith('temp-') && !subscribedRef.current.has(c.chatId)) {
@@ -118,9 +111,21 @@ export default function ChatWindow({ onFilePrepared }: Props) {
     });
   }, [chats]);
 
+  // ── KEY FIX: Always subscribe to the selected chat even if it's not in
+  // state.chat.chats (community group chats are filtered out of the chat list
+  // by the backend, so they never get subscribed via the effect above).
+  // Without this, Ashok never subscribes to the community group topic and
+  // misses all messages Syam sends.
   useEffect(() => {
     if (!selectedChatId || selectedChatId.startsWith('temp-')) return;
-    subscribeToChat(selectedChatId);
+    if (!subscribedRef.current.has(selectedChatId)) {
+      subscribedRef.current.add(selectedChatId);
+      subscribeToChat(selectedChatId);
+    }
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    if (!selectedChatId || selectedChatId.startsWith('temp-')) return;
     if (!messages.some(m => !m.id.startsWith('temp-') && m.chatId === selectedChatId)) {
       dispatch(fetchMessages(selectedChatId));
     }
@@ -160,7 +165,6 @@ export default function ChatWindow({ onFilePrepared }: Props) {
     catch (err: any) { setDragError(err.message || 'Failed to load file'); setTimeout(() => setDragError(null), 3000); }
   }, [selectedChatId, onFilePrepared]);
 
-  // Empty state
   if (!selectedChatId) {
     return <EmptyState />;
   }
@@ -174,7 +178,6 @@ export default function ChatWindow({ onFilePrepared }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drag overlay */}
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-white/80 border-2 border-dashed border-purple-400 flex flex-col items-center justify-center pointer-events-none">
           <p className="text-6xl mb-3">📂</p>
@@ -183,14 +186,12 @@ export default function ChatWindow({ onFilePrepared }: Props) {
         </div>
       )}
 
-      {/* Error toast */}
       {dragError && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-red-500 text-white text-sm px-4 py-2 rounded-xl shadow">
           {dragError}
         </div>
       )}
 
-      {/* Messages */}
       {loadingMessages ? (
         <div className="flex items-center justify-center h-full">
           <p className="text-purple-400 text-sm">Loading messages…</p>

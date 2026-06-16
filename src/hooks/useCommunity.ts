@@ -98,7 +98,7 @@ export const useGenerateInvite = () =>
   useMutation({
     mutationFn: async (communityId: string) => {
       const response = await communityService.generateInvite(communityId, {
-        expiryHours: 24,
+        expiryHours: 168, // 7 days
         maxUses: 100,
       });
       return response.data;

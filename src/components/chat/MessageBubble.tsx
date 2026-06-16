@@ -177,9 +177,15 @@ export default function MessageBubble({ message, isMe }: Props) {
   const isEdited = message.isEdited || localEdited;
   const editedAt = message.editedAt || localEditedAt;
 
-  const handleSaved = useCallback((v: string) => {
-    setLocalContent(v); setLocalEdited(true); setLocalEditedAt(new Date().toISOString()); setIsEditing(false);
-  }, []);
+  // AFTER
+const handleSaved = useCallback((v: string) => {
+  setLocalContent(v);
+  setLocalEdited(true);
+  setLocalEditedAt(new Date().toISOString());
+  setIsEditing(false);
+  setIsHovered(false);   // ← reset hover so arrow disappears
+  setShowMenu(false);    // ← ensure menu is also closed
+}, []);
 
   const fmt = (ts: string) => {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }

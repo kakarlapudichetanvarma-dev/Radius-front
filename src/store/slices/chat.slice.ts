@@ -665,19 +665,23 @@ const chatSlice = createSlice({
       })
 
       .addCase(fetchMessages.fulfilled, (state, action) => {
-        state.loadingMessages = false;
-        const incoming: Message[] = action.payload || [];
+  state.loadingMessages = false;
+  const incoming: Message[] = (action.payload || []).map((m: any) => ({
+    ...m,
+    isEdited: m.isEdited || m.edited || false,   // ← normalize
+    isDeleted: m.isDeleted || m.deleted || false, // ← normalize
+  }));
 
-        const allOptimistics = state.messages.filter(m => m.id.startsWith('temp-'));
-        const merged = new Map<string, Message>();
-        incoming.forEach((m: Message) => merged.set(m.id, m));
-        allOptimistics.forEach((m: Message) => merged.set(m.id, m));
+  const allOptimistics = state.messages.filter(m => m.id.startsWith('temp-'));
+  const merged = new Map<string, Message>();
+  incoming.forEach((m: Message) => merged.set(m.id, m));
+  allOptimistics.forEach((m: Message) => merged.set(m.id, m));
 
-        state.messages = Array.from(merged.values()).sort(
-          (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
-        );
-        state._optimisticAtFetchStart = [];
-      })
+  state.messages = Array.from(merged.values()).sort(
+    (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
+  );
+  state._optimisticAtFetchStart = [];
+})
 
       .addCase(sendPrivateMessage.fulfilled, (state, action) => {
         if (action.payload) {

@@ -10,10 +10,7 @@ interface JoinCommunityModalProps {
   onJoined?: (communityId: string) => void;
 }
 
-export default function JoinCommunityModal({
-  onClose,
-  onJoined
-}: JoinCommunityModalProps) {
+export default function JoinCommunityModal({ onClose, onJoined }: JoinCommunityModalProps) {
   const [link, setLink] = useState('');
   const [preview, setPreview] = useState<InvitePreviewResponse | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -24,16 +21,16 @@ export default function JoinCommunityModal({
 
   const handleCheck = async () => {
     if (!link.trim()) return;
-
     setError('');
     setPreview(null);
     setChecking(true);
 
-    const extractedToken = extractInviteToken(link);
+    // extractInviteToken handles both full URLs and raw tokens
+    const extractedToken = extractInviteToken(link.trim());
 
     try {
       const response = await communityService.previewInvite(extractedToken);
-      const data = response.data;
+      const data: InvitePreviewResponse = response.data;
 
       if (!data.isValid) {
         setError(
@@ -48,23 +45,29 @@ export default function JoinCommunityModal({
 
       setPreview(data);
       setToken(extractedToken);
-    } catch (e) {
-      setError('Could not find a community with that link.');
+    } catch {
+      setError('Could not find a community with that link. Please check and try again.');
     } finally {
       setChecking(false);
     }
   };
 
   const handleJoin = async () => {
-    if (!token) return;
+    if (!token || !preview) return;
     setError('');
-
     try {
       await joinViaInvite.mutateAsync(token);
-      onJoined?.(preview!.communityId);
+      onJoined?.(preview.communityId);
       onClose();
-    } catch (e) {
-      setError('Failed to join community. Please try again.');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || '';
+      if (msg.toLowerCase().includes('already') || e?.response?.status === 409) {
+        // Already a member — still navigate to community
+        onJoined?.(preview.communityId);
+        onClose();
+      } else {
+        setError('Failed to join community. Please try again.');
+      }
     }
   };
 
@@ -84,9 +87,7 @@ export default function JoinCommunityModal({
           </button>
         </div>
 
-        <label className="text-gray-500 text-xs font-medium mb-1 block">
-          Invite Link
-        </label>
+        <label className="text-gray-500 text-xs font-medium mb-1 block">Invite Link</label>
         <input
           value={link}
           onChange={e => {
@@ -95,6 +96,7 @@ export default function JoinCommunityModal({
             setToken(null);
             setError('');
           }}
+          onKeyDown={e => e.key === 'Enter' && !preview && handleCheck()}
           placeholder="Paste the community invite link here"
           className="w-full bg-gray-50 border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl px-4 py-2.5 text-sm outline-none transition"
         />
@@ -115,7 +117,6 @@ export default function JoinCommunityModal({
           </button>
         )}
 
-        {/* Channel/community preview with an "add" button beside it */}
         {preview && (
           <div className="mt-4">
             <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
@@ -132,9 +133,7 @@ export default function JoinCommunityModal({
               </div>
 
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-gray-900 truncate">
-                  {preview.communityName}
-                </h3>
+                <h3 className="font-semibold text-gray-900 truncate">{preview.communityName}</h3>
                 <p className="text-xs text-gray-500 truncate">
                   {preview.communityDescription || 'No description'}
                 </p>
@@ -158,9 +157,23 @@ export default function JoinCommunityModal({
               </button>
             </div>
 
-            <p className="text-xs text-gray-400 text-center mt-2">
-              Created by {preview.createdByName}
-            </p>
+            {preview.createdByName && (
+              <p className="text-xs text-gray-400 text-center mt-2">
+                Created by {preview.createdByName}
+              </p>
+            )}
+
+            {/* Allow trying a different link */}
+            <button
+              onClick={() => {
+                setPreview(null);
+                setToken(null);
+                setLink('');
+              }}
+              className="mt-3 w-full text-xs text-gray-400 hover:text-gray-600 transition"
+            >
+              Try a different link
+            </button>
           </div>
         )}
       </div>

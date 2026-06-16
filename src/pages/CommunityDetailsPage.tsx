@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   ArrowLeft, Users, MessageCircle, Link2,
-  Plus, Trash2, LogOut, UserCheck, UserX, X, Check
+  Plus, Trash2, LogOut, UserCheck, UserX, X, Check, Send
 } from 'lucide-react';
 
 import type { AppDispatch, RootState } from '../store';
 import MainLayout from '../layouts/MainLayout';
 import InviteLinkModal from '../components/community/InviteLinkModal';
+import ChatWindow from '../components/chat/ChatWindow';
+import MessageInput from '../components/chat/MessageInput';
 
 import {
   useCommunityDetailsQuery,
@@ -26,6 +28,11 @@ import {
 } from '../hooks/useCommunity';
 
 import { setSelectedChat } from '../store/slices/chat.slice';
+import {
+  clearCommunityGroupUnread,
+  registerCommunityGroups,
+} from '../store/slices/community.slice';
+import { revokePreview, type PreparedUpload } from '../services/upload.service';
 import type { CommunityMemberResponse, CommunityGroupSummary } from '../types/community.types';
 
 // ── Create Group Modal ────────────────────────────────────────────────────────
@@ -57,8 +64,11 @@ function CreateGroupModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Create Group</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Create Group</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+          >
             <X size={18} />
           </button>
         </div>
@@ -68,7 +78,9 @@ function CreateGroupModal({
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="Enter group name"
-          className="w-full bg-gray-50 border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl px-4 py-2.5 text-sm outline-none transition mb-4"
+          className="w-full bg-gray-50 border border-gray-200 focus:border-violet-400 focus:ring-2
+                     focus:ring-violet-100 rounded-xl px-4 py-2.5 text-sm text-gray-900
+                     placeholder-gray-400 outline-none transition mb-4"
         />
 
         {members.length > 0 && (
@@ -122,33 +134,67 @@ export default function CommunityDetailsPage() {
   const dispatch = useDispatch<AppDispatch>();
   const { communityId } = useParams<{ communityId: string }>();
 
-  const currentUserId = useSelector((s: RootState) => s.auth.user?.id ?? '');
+  const currentUserId  = useSelector((s: RootState) => s.auth.user?.id ?? '');
+  const selectedChatId = useSelector((s: RootState) => s.chat.selectedChatId);
 
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [activeTab, setActiveTab] = useState<'groups' | 'members' | 'requests'>('groups');
+  // Unread counts for community group chats
+  const communityGroupUnread = useSelector(
+    (s: RootState) => s.community.communityGroupUnread
+  );
 
-  const { data: community, isLoading: loadingCommunity, isError: communityError } =
+  const [showInviteModal,  setShowInviteModal]  = useState(false);
+  const [showCreateGroup,  setShowCreateGroup]  = useState(false);
+  const [activeTab,        setActiveTab]        = useState<'groups' | 'members' | 'requests'>('groups');
+  const [openedGroupId,    setOpenedGroupId]    = useState<string | null>(null);
+  const [pendingUpload,    setPendingUpload]    = useState<PreparedUpload | null>(null);
+
+  const handleSetPendingUpload = (upload: PreparedUpload | null) => {
+    if (pendingUpload?.previewUrl) revokePreview(pendingUpload.previewUrl);
+    setPendingUpload(upload);
+  };
+
+  const { data: community,   isLoading: loadingCommunity, isError: communityError } =
     useCommunityDetailsQuery(communityId ?? '');
-
   const { data: groups = [], isLoading: loadingGroups } =
     useCommunityGroupsQuery(communityId ?? '');
-
   const { data: membersData, isLoading: loadingMembers } =
     useCommunityMembersQuery(communityId ?? '');
 
-  const members = membersData?.members ?? [];
+  const members         = membersData?.members ?? [];
   const currentUserRole = membersData?.currentUserRole;
-  const isAdmin = currentUserRole === 'ADMIN';
+  const isAdmin         = currentUserRole === 'ADMIN';
 
   const { data: joinRequests = [] } = usePendingJoinRequests(isAdmin ? communityId ?? '' : '');
 
   const deleteCommunity = useDeleteCommunity();
-  const leaveCommunity = useLeaveCommunity();
-  const removeMember = useRemoveCommunityMember(communityId ?? '');
-  const reviewRequest = useReviewJoinRequest(communityId ?? '');
+  const leaveCommunity  = useLeaveCommunity();
+  const removeMember    = useRemoveCommunityMember(communityId ?? '');
+  const reviewRequest   = useReviewJoinRequest(communityId ?? '');
 
+  // ── Register chatId → communityId mappings whenever groups load ──────────
+  // This is what allows incrementCommunityGroupUnread (in message.events.ts)
+  // to know which community to roll the count up to, which then shows the
+  // total unread badge on the community card in the community list.
+  useEffect(() => {
+    if (communityId && groups.length > 0) {
+      dispatch(
+        registerCommunityGroups({
+          communityId,
+          groups: groups.map(g => ({ chatId: g.chatId })),
+        })
+      );
+    }
+  }, [communityId, groups, dispatch]);
+
+  // Toggle group open/close — clicking the same group again closes it
   const openGroup = (group: CommunityGroupSummary) => {
+    if (openedGroupId === group.groupId) {
+      handleBackFromGroup();
+      return;
+    }
+    // Clear unread for this community group chat when opening it
+    dispatch(clearCommunityGroupUnread(group.chatId));
+    setOpenedGroupId(group.groupId);
     dispatch(setSelectedChat({
       chatId: group.chatId,
       type: 'GROUP',
@@ -161,30 +207,35 @@ export default function CommunityDetailsPage() {
       lastMessageStatus: null,
       lastMessageSenderId: null,
       groupInfo: {
-        groupId: group.groupId,
-        name: group.groupName,
-        description: null,
+        groupId:        group.groupId,
+        name:           group.groupName,
+        description:    null,
         profilePicture: group.groupPhotoUrl,
-        memberCount: group.memberCount,
-        creatorId: '',
-        createdAt: '',
+        memberCount:    group.memberCount,
+        creatorId:      '',
+        createdAt:      '',
       },
     }));
-    navigate('/chat');
+  };
+
+  // Close group chat, stay on community page
+  const handleBackFromGroup = () => {
+    setOpenedGroupId(null);
+    dispatch(setSelectedChat(null));
   };
 
   const handleDeleteCommunity = async () => {
     if (!communityId) return;
     if (!window.confirm('Delete this community? This cannot be undone.')) return;
     await deleteCommunity.mutateAsync(communityId);
-    navigate('/chat'); // ← changed from '/communities'
+    navigate('/communities');
   };
 
   const handleLeave = async () => {
     if (!communityId) return;
     if (!window.confirm('Leave this community?')) return;
     await leaveCommunity.mutateAsync(communityId);
-    navigate('/chat'); // ← changed from '/communities'
+    navigate('/communities');
   };
 
   if (loadingCommunity) {
@@ -200,10 +251,13 @@ export default function CommunityDetailsPage() {
   if (communityError || !community) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
+        <div className="flex items-center justify-center h-full text-center">
+          <div>
             <p className="text-red-500 font-medium">Failed to load community</p>
-            <button onClick={() => navigate('/chat')} className="mt-3 text-violet-600 text-sm underline"> {/* ← changed from '/communities' */}
+            <button
+              onClick={() => navigate(-1)}
+              className="mt-3 text-violet-600 text-sm underline"
+            >
               Go back
             </button>
           </div>
@@ -212,11 +266,130 @@ export default function CommunityDetailsPage() {
     );
   }
 
+  // ── Group chat view ───────────────────────────────────────────────────────
+  if (openedGroupId && selectedChatId) {
+    const openedGroup = groups.find(g => g.groupId === openedGroupId);
+
+    return (
+      <MainLayout>
+        <>
+          <div className="flex h-full overflow-hidden">
+
+            {/* Left: groups mini-sidebar */}
+            <div className="w-72 flex-shrink-0 flex flex-col border-r border-gray-200 bg-white">
+              {/* Back to community detail */}
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                <button
+                  onClick={handleBackFromGroup}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 transition-colors"
+                  title="Back to community"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <span className="text-sm font-semibold text-gray-800 truncate">
+                  {community.name}
+                </span>
+              </div>
+
+              {/* Group list — with unread badges */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                {groups.map(group => {
+                  const unread = communityGroupUnread[group.chatId] || 0;
+                  return (
+                    <button
+                      key={group.groupId}
+                      onClick={() => openGroup(group)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+                        group.groupId === openedGroupId
+                          ? 'bg-violet-50 border border-violet-200'
+                          : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {group.groupName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${
+                          group.groupId === openedGroupId ? 'text-violet-700' : 'text-gray-800'
+                        }`}>
+                          {group.groupName}
+                        </p>
+                        <p className="text-xs text-gray-400">{group.memberCount} members</p>
+                      </div>
+                      {unread > 0 && (
+                        <span className="min-w-[20px] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5 flex-shrink-0">
+                          {unread > 99 ? '99+' : unread}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowCreateGroup(true)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-violet-300 hover:bg-violet-50 transition text-left mt-2"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
+                      <Plus size={16} className="text-violet-600" />
+                    </div>
+                    <span className="text-sm text-violet-600 font-medium">New Group</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Right: chat window */}
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0">
+                <button
+                  onClick={handleBackFromGroup}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 transition-colors"
+                  title="Close chat"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                  {openedGroup?.groupName.charAt(0).toUpperCase() ?? '#'}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{openedGroup?.groupName}</p>
+                  <p className="text-xs text-gray-400">{openedGroup?.memberCount} members</p>
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ChatWindow onFilePrepared={handleSetPendingUpload} />
+              </div>
+              <MessageInput
+                pendingUpload={pendingUpload}
+                setPendingUpload={handleSetPendingUpload}
+              />
+            </div>
+          </div>
+
+          {showCreateGroup && communityId && (
+            <CreateGroupModal
+              communityId={communityId}
+              members={members.filter(m => m.userId !== currentUserId)}
+              onClose={() => setShowCreateGroup(false)}
+            />
+          )}
+        </>
+      </MainLayout>
+    );
+  }
+
+  // ── Community detail view ─────────────────────────────────────────────────
   return (
     <MainLayout>
       <>
         {showInviteModal && communityId && (
-          <InviteLinkModal communityId={communityId} onClose={() => setShowInviteModal(false)} />
+          <InviteLinkModal
+            communityId={communityId}
+            onClose={() => setShowInviteModal(false)}
+          />
         )}
 
         {showCreateGroup && communityId && (
@@ -232,7 +405,11 @@ export default function CommunityDetailsPage() {
           {/* Header */}
           <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-4">
-              <button onClick={() => navigate('/chat')} className="p-2 rounded-xl hover:bg-gray-100 transition-colors"> {/* ← changed from '/communities' */}
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-700"
+                title="Back"
+              >
                 <ArrowLeft size={20} />
               </button>
               <div>
@@ -269,10 +446,14 @@ export default function CommunityDetailsPage() {
             </div>
           </div>
 
-          {/* Stats Bar */}
+          {/* Stats */}
           <div className="bg-white border-b border-gray-100 px-6 py-3 flex gap-6 text-sm text-gray-500 flex-shrink-0">
-            <span className="flex items-center gap-1.5"><Users size={14} /> {community.memberCount} members</span>
-            <span className="flex items-center gap-1.5"><MessageCircle size={14} /> {community.groupCount} groups</span>
+            <span className="flex items-center gap-1.5">
+              <Users size={14} /> {community.memberCount} members
+            </span>
+            <span className="flex items-center gap-1.5">
+              <MessageCircle size={14} /> {community.groupCount} groups
+            </span>
             {isAdmin && joinRequests.length > 0 && (
               <span className="flex items-center gap-1.5 text-violet-600 font-medium">
                 {joinRequests.length} pending request{joinRequests.length > 1 ? 's' : ''}
@@ -305,7 +486,7 @@ export default function CommunityDetailsPage() {
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
 
-            {/* ── Groups Tab ── */}
+            {/* Groups */}
             {activeTab === 'groups' && (
               <div className="space-y-3">
                 {loadingGroups ? (
@@ -314,17 +495,22 @@ export default function CommunityDetailsPage() {
                   <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
                     <MessageCircle size={40} className="mx-auto text-gray-300 mb-3" />
                     <p className="font-medium text-gray-700">No groups yet</p>
-                    <p className="text-sm text-gray-400 mt-1">Create the first group for this community</p>
-                    <button
-                      onClick={() => setShowCreateGroup(true)}
-                      className="mt-4 px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-medium transition"
-                    >
-                      Create Group
-                    </button>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Create the first group for this community
+                    </p>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setShowCreateGroup(true)}
+                        className="mt-4 px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-medium transition"
+                      >
+                        Create Group
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <>
-                    {groups.map(group => (
+                  groups.map(group => {
+                    const unread = communityGroupUnread[group.chatId] || 0;
+                    return (
                       <button
                         key={group.groupId}
                         onClick={() => openGroup(group)}
@@ -338,16 +524,22 @@ export default function CommunityDetailsPage() {
                             <p className="font-semibold text-gray-900">{group.groupName}</p>
                             <p className="text-sm text-gray-400 mt-0.5">{group.memberCount} members</p>
                           </div>
-                          <MessageCircle size={16} className="text-gray-300" />
+                          {unread > 0 ? (
+                            <span className="min-w-[20px] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5">
+                              {unread > 99 ? '99+' : unread}
+                            </span>
+                          ) : (
+                            <Send size={16} className="text-gray-300" />
+                          )}
                         </div>
                       </button>
-                    ))}
-                  </>
+                    );
+                  })
                 )}
               </div>
             )}
 
-            {/* ── Members Tab ── */}
+            {/* Members */}
             {activeTab === 'members' && (
               <div className="space-y-2">
                 {loadingMembers ? (
@@ -365,7 +557,9 @@ export default function CommunityDetailsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 text-sm truncate">{member.name}</p>
-                        <p className="text-xs text-gray-400">{member.role === 'ADMIN' ? '👑 Admin' : 'Member'}</p>
+                        <p className="text-xs text-gray-400">
+                          {member.role === 'ADMIN' ? '👑 Admin' : 'Member'}
+                        </p>
                       </div>
                       {isAdmin && member.userId !== currentUserId && (
                         <button
@@ -382,7 +576,7 @@ export default function CommunityDetailsPage() {
               </div>
             )}
 
-            {/* ── Join Requests Tab (admin only) ── */}
+            {/* Join Requests */}
             {activeTab === 'requests' && isAdmin && (
               <div className="space-y-2">
                 {joinRequests.length === 0 ? (
@@ -407,14 +601,12 @@ export default function CommunityDetailsPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => reviewRequest.mutate({ requestId: req.id, accept: true })}
-                          title="Accept"
                           className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition"
                         >
                           <UserCheck size={16} />
                         </button>
                         <button
                           onClick={() => reviewRequest.mutate({ requestId: req.id, accept: false })}
-                          title="Reject"
                           className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition"
                         >
                           <X size={16} />
@@ -427,8 +619,8 @@ export default function CommunityDetailsPage() {
             )}
           </div>
 
-          {/* FAB — create group */}
-          {activeTab === 'groups' && (
+          {/* FAB */}
+          {activeTab === 'groups' && isAdmin && (
             <button
               onClick={() => setShowCreateGroup(true)}
               className="fixed bottom-6 right-6 w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition z-40"

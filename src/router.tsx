@@ -10,83 +10,47 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 
 import CommunityPage from './pages/CommunityPage';
 import CommunityDetailsPage from './pages/CommunityDetailsPage';
+import InviteJoinPage from './pages/InviteJoinPage';
 
 import AuthGuard from './security/auth.guard';
 import GuestGuard from './router/GuestGuard';
 
 export const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <LandingPage />
-  },
+  { path: '/', element: <LandingPage /> },
   {
     path: '/login',
-    element: (
-      <GuestGuard>
-        <LoginPage />
-      </GuestGuard>
-    )
+    element: <GuestGuard><LoginPage /></GuestGuard>
   },
   {
     path: '/register',
-    element: (
-      <GuestGuard>
-        <RegisterPage />
-      </GuestGuard>
-    )
+    element: <GuestGuard><RegisterPage /></GuestGuard>
   },
   {
     path: '/otp',
-    element: (
-      <GuestGuard>
-        <OtpPage />
-      </GuestGuard>
-    )
+    element: <GuestGuard><OtpPage /></GuestGuard>
   },
   {
     path: '/forgot-password',
-    element: (
-      <GuestGuard>
-        <ForgotPasswordPage />
-      </GuestGuard>
-    )
+    element: <GuestGuard><ForgotPasswordPage /></GuestGuard>
   },
   {
     path: '/reset-password',
-    element: (
-      <GuestGuard>
-        <ResetPasswordPage />
-      </GuestGuard>
-    )
+    element: <GuestGuard><ResetPasswordPage /></GuestGuard>
   },
   {
     path: '/chat',
-    element: (
-      <AuthGuard>
-        <ChatPage />
-      </AuthGuard>
-    )
+    element: <AuthGuard><ChatPage /></AuthGuard>
   },
-
-  /*
-   * Communities
-   */
-
   {
     path: '/communities',
-    element: (
-      <AuthGuard>
-        <CommunityPage />
-      </AuthGuard>
-    )
+    element: <AuthGuard><CommunityPage /></AuthGuard>
   },
-
   {
     path: '/communities/:communityId',
-    element: (
-      <AuthGuard>
-        <CommunityDetailsPage />
-      </AuthGuard>
-    )
-  }
+    element: <AuthGuard><CommunityDetailsPage /></AuthGuard>
+  },
+  {
+    path: '/community/invite/:token',
+    element: <InviteJoinPage />
+  },
 ]);

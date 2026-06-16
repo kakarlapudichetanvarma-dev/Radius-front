@@ -4,11 +4,12 @@ import {
 } from '../store/slices/chat.slice';
 
 import {
+  incrementCommunityGroupUnread,
+} from '../store/slices/community.slice';
+
+import {
   safeSubscribe
 } from './socket.client';
-
-// ── REMOVED: presenceSubscribed — presence is handled exclusively
-//             by presence.events.ts to avoid duplicate subscriptions ──
 
 let _store: any = null;
 let _receiveMessage: any = null;
@@ -50,7 +51,7 @@ const buildRealMessage = (payload: any, messageId: string) => ({
   deliveredAt: payload.deliveredAt || null,
   readAt: payload.readAt || null,
   isDeleted: payload.deleted || false,
-  isEdited: payload.edited || false,
+  isEdited: payload.isEdited ?? payload.edited ?? false,
   editedAt: payload.editedAt || null,
   replyToId: payload.replyToId || null,
   attachment: payload.attachment || null,
@@ -82,6 +83,7 @@ export const subscribeToChat = (chatId: string): void => {
     const payload = JSON.parse(frame.body);
     const state = _store.getState();
     const currentUsername = state.auth.user?.username;
+    const currentUserId = state.auth.user?.id;
 
     if (payload.type === 'TYPING') {
       if (payload.username === currentUsername) return;
@@ -155,11 +157,17 @@ export const subscribeToChat = (chatId: string): void => {
     setTimeout(() => alreadyProcessedIds.delete(messageId), 1000);
 
     const realMessage = buildRealMessage(payload, messageId);
-    const currentUserId = state.auth.user?.id;
-    const isCurrentChat = state.chat.selectedChatId === realMessage.chatId;
     const archived = state.chat.archivedChatIds?.includes(realMessage.chatId) ?? false;
 
+    // ── Helper: is this chatId a community group chat? ──────────────────────
+    // A chatId is a community group if it is registered in the community slice's
+    // chatIdToCommunityId map. This map is populated by registerCommunityGroups,
+    // which is dispatched from CommunityDetailsPage whenever the groups list loads.
+    const isCommunityChat =
+      !!_store.getState().community.chatIdToCommunityId[realMessage.chatId];
+
     if (payload.senderId === currentUserId) {
+      // Try to replace an optimistic message first
       const optimisticId = findMatchingOptimisticId(payload.content ?? '', payload.chatId);
       if (optimisticId) {
         pendingOwnMessages.delete(optimisticId);
@@ -168,41 +176,57 @@ export const subscribeToChat = (chatId: string): void => {
           type: 'chat/replaceOptimisticWithReal',
           payload: { optimisticId, realMessage },
         });
+      } else {
+        // No optimistic message found (e.g. community group chat) —
+        // add the message to the store directly so the sender sees it
+        const exists = _store.getState().chat.messages.some((m: any) => m.id === messageId);
+        if (!exists && !archived) {
+          _store.dispatch(_receiveMessage(realMessage));
+        }
       }
+
       if (!archived) {
         _store.dispatch({ type: 'chat/updateChatLastMessage', payload: realMessage });
       }
       return;
     }
 
+    // ── Message from someone else ───────────────────────────────────────────
     const exists = state.chat.messages.some((m: any) => m.id === messageId);
-    console.log('📨 INCOMING MSG:', {
-      messageId,
-      chatId: realMessage.chatId,
-      content: realMessage.content,
-      senderId: payload.senderId,
-      currentUserId,
-      isCurrentChat,
-      archived,
-      exists,
-      selectedChatId: state.chat.selectedChatId,
-      messagesInStore: state.chat.messages.length,
-    });
+    const isCurrentlyOpenChat = state.chat.selectedChatId === realMessage.chatId;
 
     if (!exists) {
       if (!archived) {
         _store.dispatch(_receiveMessage(realMessage));
-      } else if (isCurrentChat) {
-        _store.dispatch(_receiveMessage(realMessage));
+      } else {
+        if (isCurrentlyOpenChat) {
+          _store.dispatch(_receiveMessage(realMessage));
+        }
+      }
+    }
+
+    // ── Unread counting ─────────────────────────────────────────────────────
+    // Community group chats are NOT in the normal chat list, so they need their
+    // own unread counter in the community slice. This feeds both:
+    //   • the per-group badge on CommunityDetailsPage
+    //   • the total unread badge on the community card in CommunityList
+    if (isCommunityChat) {
+      if (!isCurrentlyOpenChat) {
+        _store.dispatch(incrementCommunityGroupUnread(realMessage.chatId));
+      }
+    } else {
+      // Regular chat — the existing receiveMessage reducer already increments
+      // unreadCount on the chat summary, so nothing extra needed here.
+      const isInChatList = state.chat.chats.some((c: any) => c.chatId === realMessage.chatId);
+      if (!isInChatList && !isCurrentlyOpenChat) {
+        // Fallback safety: if somehow not in list and not community, still increment
+        _store.dispatch(incrementCommunityGroupUnread(realMessage.chatId));
       }
     }
   });
 };
 
-// ── REMOVED: subscribeToPresence() — handled by presence.events.ts ──
-
 export const resetMessageEvents = (): void => {
-  // Note: presence cleanup is done by disconnectPresence() in presence.events.ts
   pendingOwnMessages.clear();
   realIdToOptimisticId.clear();
   alreadyProcessedIds.clear();
