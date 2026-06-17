@@ -1,38 +1,21 @@
-export const peerConnection =
-  new RTCPeerConnection({
-    iceServers: [
-      {
-        urls:
-          'stun:stun.l.google.com:19302'
-      }
-    ]
-  });
+import { getIceServers, createPeerConnection } from '../config/webrtc.config';
 
-export const createOffer =
-  async (
-    stream:
-      MediaStream
-  ) => {
-    stream
-      .getTracks()
-      .forEach(
-        track => {
-          peerConnection
-            .addTrack(
-              track,
-              stream
-            );
-        }
-      );
+let _pc: RTCPeerConnection | null = null;
 
-    const offer =
-      await peerConnection
-        .createOffer();
+export async function initPeerConnection(): Promise<RTCPeerConnection> {
+  closePeerConnection();
+  const iceServers = await getIceServers();
+  _pc = createPeerConnection(iceServers);
+  return _pc;
+}
 
-    await peerConnection
-      .setLocalDescription(
-        offer
-      );
+export function getPeerConnection(): RTCPeerConnection | null {
+  return _pc;
+}
 
-    return offer;
-  };
+export function closePeerConnection() {
+  if (_pc) {
+    _pc.close();
+    _pc = null;
+  }
+}

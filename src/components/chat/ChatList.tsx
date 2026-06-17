@@ -163,9 +163,24 @@ function ChatItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { setIsHovered(false); setShowMenu(false); }}
     >
-      <button
+      {/*
+        This was a <button> before, but it contains a nested <button>
+        (the chevron toggle below) which is invalid HTML and caused a
+        hydration warning. Using a div with role="button" + keyboard
+        support preserves click/keyboard accessibility without nesting
+        interactive elements.
+      */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onClick}
-        className={`w-full text-left px-4 py-3 flex items-center gap-3 rounded-2xl transition-all shadow-sm
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+          }
+        }}
+        className={`w-full text-left px-4 py-3 flex items-center gap-3 rounded-2xl transition-all shadow-sm cursor-pointer
           ${isSelected
             ? 'border border-violet-200'
             : 'bg-white hover:bg-gray-50 border border-gray-100 hover:border-violet-100 hover:shadow-md'
@@ -195,28 +210,27 @@ function ChatItem({
               )}
               {/* WhatsApp-style small chevron — only on hover */}
               {isHovered && (
-                // Updated — plain icon, no circle, same as ChatList
-<button
-  onClick={() => setShowMenu(p => !p)}
-  className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-  style={{ lineHeight: 0 }}
->
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 14 14"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M3 5L7 9L11 5"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-</button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowMenu(p => !p); }}
+                  className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                  style={{ lineHeight: 0 }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M3 5L7 9L11 5"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               )}
             </div>
           </div>
@@ -250,7 +264,7 @@ function ChatItem({
             )}
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Context menu dropdown */}
       <AnimatePresence>
