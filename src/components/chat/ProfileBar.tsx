@@ -8,7 +8,7 @@ import { openNovaChat } from '../../store/slices/chat.slice';
 
 import ProfileModal from './ProfileModal';
 
-import { Phone, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 const ProfileBar = memo(function ProfileBar() {
   const navigate = useNavigate();
@@ -58,25 +58,6 @@ const ProfileBar = memo(function ProfileBar() {
           w-full
         "
       >
-        {/* Calls */}
-        <button
-          className="
-            w-10
-            h-10
-            rounded-full
-            hover:bg-gray-100
-            flex
-            items-center
-            justify-center
-            text-gray-500
-            hover:text-violet-600
-            transition-colors
-          "
-          title="Calls"
-        >
-          <Phone size={20} />
-        </button>
-
         {/* Communities — with red dot if unread */}
         <button
           onClick={() => navigate('/communities')}

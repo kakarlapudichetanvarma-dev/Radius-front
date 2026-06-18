@@ -9,9 +9,8 @@ import chatReducer, {
 import authReducer from './slices/auth.slice';
 import friendReducer from './slices/friend.slice';
 import groupReducer from './slices/group.slice';
-import callReducer from './slices/call.slice';
 import profileReducer from './slices/profile.slice';
-import uiReducer from './slices/ui.slice'; // ← ADD
+import uiReducer from './slices/ui.slice';
 import { initMessageEvents } from '../socket/message.events';
 import communityReducer from './slices/community.slice';
 
@@ -21,10 +20,9 @@ export const store = configureStore({
     auth:    authReducer,
     friend:  friendReducer,
     group:   groupReducer,
-    call:    callReducer,
     community: communityReducer,
     profile: profileReducer,
-    ui:      uiReducer, // ← ADD
+    ui:      uiReducer,
   },
 });
 

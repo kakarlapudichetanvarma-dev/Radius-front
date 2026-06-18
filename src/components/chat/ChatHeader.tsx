@@ -1,35 +1,25 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { AnimatePresence } from 'framer-motion';
 import type { RootState } from '../../store';
-import CallModal from '../call/CallModal';
-import IncomingCallModal from '../call/IncomingCallModal';
 import TypingIndicator from './TypingIndicator';
 import { useTypingUsers } from '../../hooks/useTyping';
-import { useCall } from '../../hooks/useCall';
 import WallpaperSettings from '../profile/WallpaperSettings';
 import PrivateChatInfoPanel from './PrivateChatInfoPanel';
 import GroupChatInfoPanel from './GroupChatInfoPanel';
 import { getFormattedLastSeen } from '../../presence/last-seen';
-import { Phone, Video } from 'lucide-react';
 
 export default function ChatHeader() {
   const [showWallpaper,  setShowWallpaper]  = useState(false);
   const [showInfoPanel,  setShowInfoPanel]  = useState(false);
-  const [showCallModal,  setShowCallModal]  = useState(false);
-
-  const localStreamRef = useRef<MediaStream | null>(null);
 
   const selectedChat = useSelector((s: RootState) => s.chat.selectedChat);
-  const callStatus   = useSelector((s: RootState) => s.call.status);
   const friends      = useSelector((s: RootState) => s.friend.friends);
   const onlineUsers  = useSelector((s: RootState) => s.chat.onlineUsers);
   const lastSeenMap  = useSelector((s: RootState) => s.chat.lastSeenMap);
 
   const typingUsers = useTypingUsers(selectedChat?.chatId ?? null);
   const isTyping    = typingUsers.length > 0;
-
-  const { startCall } = useCall();
 
   const chatName = selectedChat
     ? selectedChat.type === 'GROUP'
@@ -66,21 +56,6 @@ export default function ChatHeader() {
     return null;
   })();
 
-  const handleAudioCall = async () => {
-    await startCall('AUDIO');
-    setShowCallModal(true);
-  };
-
-  const handleVideoCall = async () => {
-    await startCall('VIDEO');
-    setShowCallModal(true);
-  };
-
-  const handleIncomingAccepted = (stream: MediaStream) => {
-    localStreamRef.current = stream;
-    setShowCallModal(true);
-  };
-
   const avatarColors = [
     'from-purple-400 to-purple-600', 'from-pink-400 to-pink-600',
     'from-blue-400 to-blue-600',     'from-green-400 to-green-600',
@@ -88,21 +63,8 @@ export default function ChatHeader() {
   ];
   const colorIdx = ((chatName?.charCodeAt(0) || 0)) % avatarColors.length;
 
-  const isInCall = callStatus === 'CALLING' || callStatus === 'ACTIVE';
-
   return (
     <>
-      {/* Incoming call modal — always mounted, shows when status=INCOMING */}
-      <IncomingCallModal onAccepted={handleIncomingAccepted} />
-
-      {/* Active / outgoing call modal */}
-      {showCallModal && isInCall && (
-        <CallModal
-          localStream={localStreamRef.current}
-          onClose={() => setShowCallModal(false)}
-        />
-      )}
-
       {showWallpaper && selectedChat && (
         <div className="absolute top-[65px] right-0 w-72 h-[calc(100%-65px)] z-40 bg-white border-l border-gray-200 shadow-xl flex flex-col">
           <WallpaperSettings onClose={() => setShowWallpaper(false)} />
@@ -163,33 +125,9 @@ export default function ChatHeader() {
           ) : null}
         </div>
 
-        {/* Right: call buttons + dots — only show for PRIVATE chats */}
+        {/* Right: dots only — call buttons removed */}
         {selectedChat && (
           <div className="flex items-center gap-1">
-
-            {/* Audio call — only for private chats */}
-            {isPrivate && (
-              <button
-                onClick={handleAudioCall}
-                disabled={isInCall}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Audio call"
-              >
-                <Phone size={18} />
-              </button>
-            )}
-
-            {/* Video call — only for private chats */}
-            {isPrivate && (
-              <button
-                onClick={handleVideoCall}
-                disabled={isInCall}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Video call"
-              >
-                <Video size={18} />
-              </button>
-            )}
 
             {/* More / dots */}
             <button
