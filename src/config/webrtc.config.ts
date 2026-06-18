@@ -14,12 +14,12 @@ function isValidIceServer(server: IceServer): boolean {
 
 export async function getIceServers(): Promise<IceServer[]> {
   if (cachedIceServers) return cachedIceServers;
+
   try {
     const res = await api.get('/api/v1/chat/webrtc/ice-servers');
     const servers: IceServer[] = res.data.data || [];
     const validServers = servers.filter(isValidIceServer);
 
-    // If filtering removed everything (e.g. TURN not configured), fall back to public STUN
     if (validServers.length === 0) {
       cachedIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
     } else {
@@ -28,7 +28,6 @@ export async function getIceServers(): Promise<IceServer[]> {
 
     return cachedIceServers;
   } catch {
-    // fallback to Google STUN
     return [{ urls: 'stun:stun.l.google.com:19302' }];
   }
 }

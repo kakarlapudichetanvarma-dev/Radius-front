@@ -27,28 +27,21 @@ export function useCall() {
     if (!calleeId || !chatId) return;
 
     try {
-      console.log('[startCall] starting call, type:', callType, 'calleeId:', calleeId, 'chatId:', chatId);
+      console.log('[startCall] Starting call to:', calleeId, 'type:', callType);
 
-      // Get media stream based on call type
       const stream = callType === 'VIDEO'
         ? await getVideoStream()
         : await getAudioStream();
 
-      console.log('[startCall] got media stream:', stream);
+      console.log('[startCall] Got media stream');
       localStreamRef.current = stream;
 
-      // Init peer connection
-      const pc = await initPeerConnection();
-      console.log('[startCall] peer connection initialized:', pc);
-
-      // Create SDP offer
-      const offer = await createOffer(stream);
-      console.log('[startCall] offer created:', offer);
-
-      // Subscribe to call events for this chat
+      // IMPORTANT: Subscribe BEFORE sending offer
       subscribeToCallEvents(chatId, store);
 
-      // Update Redux state
+      await initPeerConnection();
+      const offer = await createOffer(stream);
+
       dispatch(startOutgoingCall({
         chatId,
         calleeId,
@@ -56,9 +49,8 @@ export function useCall() {
         callType,
       }));
 
-      // Send offer to backend via STOMP
       sendCallInitiate(chatId, calleeId, callType, offer);
-      console.log('[startCall] call.initiate sent over socket');
+      console.log('[startCall] Offer sent successfully');
 
     } catch (err: any) {
       console.error('[startCall] FAILED:', err);
