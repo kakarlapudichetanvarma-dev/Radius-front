@@ -8,7 +8,7 @@ import Sidebar from '../components/chat/Sidebar';
 import ChatHeader from '../components/chat/ChatHeader';
 import ChatWindow from '../components/chat/ChatWindow';
 import MessageInput from '../components/chat/MessageInput';
-import IncomingCallModal from '../components/call/IncomingCallModal';
+import NovaChatWindow from '../components/chat/NovaChatWindow';
 
 import { fetchChats } from '../store/slices/chat.slice';
 import { fetchFriends } from '../store/slices/friend.slice';
@@ -20,6 +20,7 @@ const SIDEBAR_WIDTH = 360;
 export default function ChatPage() {
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
+  const isNovaChatOpen = useSelector((state: RootState) => state.chat.isNovaChatOpen);
 
   const [pendingUpload, setPendingUpload] = useState<PreparedUpload | null>(null);
 
@@ -47,7 +48,6 @@ export default function ChatPage() {
 
   return (
     <MainLayout>
-      <IncomingCallModal />
 
       <div className="flex h-full overflow-hidden bg-white">
 
@@ -61,14 +61,20 @@ export default function ChatPage() {
 
         {/* Chat panel */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
-          <ChatHeader />
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ChatWindow onFilePrepared={handleSetPendingUpload} />
-          </div>
-          <MessageInput
-            pendingUpload={pendingUpload}
-            setPendingUpload={handleSetPendingUpload}
-          />
+          {isNovaChatOpen ? (
+            <NovaChatWindow />
+          ) : (
+            <>
+              <ChatHeader />
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ChatWindow onFilePrepared={handleSetPendingUpload} />
+              </div>
+              <MessageInput
+                pendingUpload={pendingUpload}
+                setPendingUpload={handleSetPendingUpload}
+              />
+            </>
+          )}
         </div>
 
       </div>

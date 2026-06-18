@@ -9,6 +9,7 @@ import CreateGroupModal from './CreateGroupModal';
 
 const Sidebar = memo(function Sidebar() {
   const [activeTab, setActiveTab] = useState<'direct' | 'groups' | 'archived'>('direct');
+  const [searchTerm, setSearchTerm] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -98,15 +99,15 @@ const Sidebar = memo(function Sidebar() {
               )}
 
               {/* Red dot — only show on inactive tabs with unread */}
-{activeTab !== tab && hasUnread[tab] && (
-  <span className="inline-block w-1 h-1 rounded-full bg-red-500 mb-1 ml-0.5" />
-)}
+              {activeTab !== tab && hasUnread[tab] && (
+                <span className="inline-block w-1 h-1 rounded-full bg-red-500 mb-1 ml-0.5" />
+              )}
             </button>
           ))}
         </div>
 
-        <SearchBar />
-        <ChatList activeTab={activeTab} />
+        <SearchBar value={searchTerm} onChange={setSearchTerm} />
+        <ChatList activeTab={activeTab} searchTerm={searchTerm} />
       </div>
     </>
   );

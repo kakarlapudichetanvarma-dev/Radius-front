@@ -1,4 +1,9 @@
-export default function SearchBar() {
+interface Props {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+export default function SearchBar({ value, onChange }: Props) {
   return (
     <div className="relative">
       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
@@ -10,6 +15,8 @@ export default function SearchBar() {
       </div>
       <input
         type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder="Search chats..."
         className="w-full h-9 pl-9 pr-4 rounded-xl bg-gray-100 border border-gray-200
                    text-gray-700 text-sm placeholder:text-gray-400

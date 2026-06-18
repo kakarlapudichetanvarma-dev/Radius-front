@@ -163,13 +163,6 @@ function ChatItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { setIsHovered(false); setShowMenu(false); }}
     >
-      {/*
-        This was a <button> before, but it contains a nested <button>
-        (the chevron toggle below) which is invalid HTML and caused a
-        hydration warning. Using a div with role="button" + keyboard
-        support preserves click/keyboard accessibility without nesting
-        interactive elements.
-      */}
       <div
         role="button"
         tabIndex={0}
@@ -376,9 +369,10 @@ function ArchivedChatsPanel({ onClose }: { onClose: () => void }) {
 
 interface ChatListProps {
   activeTab: 'direct' | 'groups' | 'archived';
+  searchTerm: string;
 }
 
-export default function ChatList({ activeTab }: ChatListProps) {
+export default function ChatList({ activeTab, searchTerm }: ChatListProps) {
   const dispatch = useDispatch<AppDispatch>();
 
   const [liveUpdates, setLiveUpdates] = useState<Record<string, string>>({});
@@ -474,6 +468,13 @@ export default function ChatList({ activeTab }: ChatListProps) {
     return null;
   };
 
+  // Case-insensitive "contains" match — covers both "starts with" and "anywhere in name"
+  const matchesSearch = useCallback((name: string) => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return true;
+    return name.toLowerCase().includes(term);
+  }, [searchTerm]);
+
   // ── Archived tab ────────────────────────────────────────────────────────────
   if (activeTab === 'archived') {
     if (archivedLoading) {
@@ -483,17 +484,20 @@ export default function ChatList({ activeTab }: ChatListProps) {
         </div>
       );
     }
-    if (archivedChats.length === 0) {
+
+    const filteredArchived = archivedChats.filter(chat => matchesSearch(getName(chat)));
+
+    if (filteredArchived.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-48 text-gray-400">
           <Archive size={28} className="mb-2" />
-          <p className="text-sm">No archived chats</p>
+          <p className="text-sm">{searchTerm ? 'No matching chats' : 'No archived chats'}</p>
         </div>
       );
     }
     return (
       <div className="flex-1 overflow-y-auto">
-        {archivedChats.map(chat => (
+        {filteredArchived.map(chat => (
           <div key={chat.chatId} className="relative group border-b border-gray-50 hover:bg-gray-50 transition">
             <button
               onClick={() => dispatch(setSelectedChat(chat))}
@@ -524,11 +528,13 @@ export default function ChatList({ activeTab }: ChatListProps) {
   }
 
   // ── Direct / Groups tabs ────────────────────────────────────────────────────
-  const filteredChats = visibleChats.filter(chat =>
-    activeTab === 'direct'
+  const filteredChats = visibleChats.filter(chat => {
+    const tabMatch = activeTab === 'direct'
       ? chat.type === 'PRIVATE' && !chat.archived
-      : chat.type === 'GROUP'  && !chat.archived
-  );
+      : chat.type === 'GROUP'  && !chat.archived;
+    if (!tabMatch) return false;
+    return matchesSearch(getName(chat));
+  });
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -560,11 +566,15 @@ export default function ChatList({ activeTab }: ChatListProps) {
       ) : (
         <div className="flex flex-col items-center justify-center h-48 text-gray-400">
           <p className="text-sm font-medium">
-            {activeTab === 'groups' ? 'No groups yet' : 'No chats yet'}
+            {searchTerm
+              ? 'No matching chats'
+              : activeTab === 'groups' ? 'No groups yet' : 'No chats yet'}
           </p>
-          <p className="text-xs mt-1">
-            {activeTab === 'groups' ? 'Create a group to get started' : 'Add a friend to get started'}
-          </p>
+          {!searchTerm && (
+            <p className="text-xs mt-1">
+              {activeTab === 'groups' ? 'Create a group to get started' : 'Add a friend to get started'}
+            </p>
+          )}
         </div>
       )}
     </div>

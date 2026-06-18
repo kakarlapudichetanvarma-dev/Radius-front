@@ -20,6 +20,7 @@ interface ChatState {
   _optimisticAtFetchStart: Message[];
   _locallyReadChatIds: string[];
   archivedChatIds: string[];
+   isNovaChatOpen: boolean;  
 }
 
 function sanitizeChats(chats: ChatSummary[]): ChatSummary[] {
@@ -129,6 +130,7 @@ const initialState: ChatState = {
       return raw ? JSON.parse(raw) : [];
     } catch { return []; }
   })(),
+  isNovaChatOpen: false,
 };
 
 export const fetchChats = createAsyncThunk(
@@ -197,6 +199,7 @@ const chatSlice = createSlice({
 
   reducers: {
     setSelectedChat: (state, action: PayloadAction<ChatSummary | null>) => {
+      state.isNovaChatOpen = false;
       if (action.payload === null) {
         if (state.selectedChatId) {
           state.chatClosedAt[state.selectedChatId] = new Date().toISOString();
@@ -589,6 +592,21 @@ const chatSlice = createSlice({
         localStorage.setItem('chat_chats', JSON.stringify(state.chats));
       }
     },
+    openNovaChat: (state) => {
+      if (state.selectedChatId) {
+        state.chatClosedAt[state.selectedChatId] = new Date().toISOString();
+      }
+      state.selectedChat = null;
+      state.selectedChatId = null;
+      state.messages = [];
+      state.isNovaChatOpen = true;
+      localStorage.removeItem('chat_selectedChatId');
+      localStorage.removeItem('chat_selectedChat');
+    },
+
+    closeNovaChat: (state) => {
+      state.isNovaChatOpen = false;
+    },
   },
 
   extraReducers: (builder) => {
@@ -787,6 +805,8 @@ export const {
   unarchiveChat,
   markChatArchived,
   removeChat,
+  openNovaChat,    // ← ADD
+  closeNovaChat,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

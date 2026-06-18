@@ -1,8 +1,10 @@
 import { useState, useMemo, memo } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+
 import { useNavigate } from 'react-router-dom';
 
-import type { RootState } from '../../store';
+import type { AppDispatch, RootState } from '../../store';
+import { openNovaChat } from '../../store/slices/chat.slice';
 
 import ProfileModal from './ProfileModal';
 
@@ -10,6 +12,7 @@ import { Phone, Sparkles } from 'lucide-react';
 
 const ProfileBar = memo(function ProfileBar() {
   const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
 
   const { user } = useSelector(
     (state: RootState) => state.auth
@@ -119,6 +122,7 @@ const ProfileBar = memo(function ProfileBar() {
 
         {/* AI */}
         <button
+          onClick={() => dispatch(openNovaChat())}
           className="
             w-10
             h-10
@@ -131,7 +135,7 @@ const ProfileBar = memo(function ProfileBar() {
             hover:text-violet-600
             transition-colors
           "
-          title="AI Assistant"
+          title="Nova AI Assistant"
         >
           <Sparkles size={20} />
         </button>

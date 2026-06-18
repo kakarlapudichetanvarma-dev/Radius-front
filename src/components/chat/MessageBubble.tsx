@@ -77,7 +77,13 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: {
   const dispatch = useDispatch<AppDispatch>();
   const menuRef  = useRef<HTMLDivElement>(null);
 
-  const canEdit = isMe && (() => {
+  // Copy and Edit are only ever relevant for plain TEXT messages — files,
+  // images, videos, audio, links, and stickers can only be deleted.
+  const isTextMessage = message.messageType === 'TEXT';
+
+  const canCopy = isTextMessage;
+
+  const canEdit = isMe && isTextMessage && (() => {
     try { return (Date.now() - new Date(message.sentAt).getTime()) < 5 * 60 * 1000; }
     catch { return false; }
   })();
@@ -99,10 +105,12 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: {
       transition={{ duration: 0.1 }}
       className={`absolute top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden min-w-[155px] ${isMe ? 'right-0' : 'left-0'}`}
     >
-      <button onClick={() => { if (message.content) navigator.clipboard.writeText(message.content).catch(() => {}); onClose(); }}
-        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
-        📋 Copy
-      </button>
+      {canCopy && (
+        <button onClick={() => { if (message.content) navigator.clipboard.writeText(message.content).catch(() => {}); onClose(); }}
+          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+          📋 Copy
+        </button>
+      )}
       {canEdit && (
         <button onClick={() => { onEdit(); onClose(); }}
           className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
@@ -177,15 +185,14 @@ export default function MessageBubble({ message, isMe }: Props) {
   const isEdited = message.isEdited || localEdited;
   const editedAt = message.editedAt || localEditedAt;
 
-  // AFTER
-const handleSaved = useCallback((v: string) => {
-  setLocalContent(v);
-  setLocalEdited(true);
-  setLocalEditedAt(new Date().toISOString());
-  setIsEditing(false);
-  setIsHovered(false);   // ← reset hover so arrow disappears
-  setShowMenu(false);    // ← ensure menu is also closed
-}, []);
+  const handleSaved = useCallback((v: string) => {
+    setLocalContent(v);
+    setLocalEdited(true);
+    setLocalEditedAt(new Date().toISOString());
+    setIsEditing(false);
+    setIsHovered(false);   // ← reset hover so arrow disappears
+    setShowMenu(false);    // ← ensure menu is also closed
+  }, []);
 
   const fmt = (ts: string) => {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
