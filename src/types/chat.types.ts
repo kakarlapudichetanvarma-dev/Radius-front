@@ -22,6 +22,15 @@ export interface GroupInfo {
   createdAt: string;
 }
 
+export interface ReplyPreview {
+  messageId: string;
+  senderId: string | null;
+  senderUsername: string | null;
+  messageType: string | null;
+  previewText: string | null;
+  deleted: boolean;
+}
+
 export interface Message {
   id: string;
   chatId: string;
@@ -31,16 +40,19 @@ export interface Message {
   content: string | null;
   status: 'SENT' | 'DELIVERED' | 'READ';
   isEdited: boolean;
-  edited: boolean;        // ← ADD: raw field from server
+  edited: boolean;        // ← raw field from server
   isDeleted: boolean;
-  deleted: boolean;       // ← ADD: raw field from server
+  deleted: boolean;       // ← raw field from server
   replyToId: string | null;
+  replyPreview: ReplyPreview | null;
+  isForwarded: boolean;
+  starred: boolean;
   sentAt: string;
   deliveredAt: string | null;
   readAt: string | null;
   editedAt: string | null;
-  deletedAt: string | null; // ← ADD
-  updatedAt: string | null; // ← ADD
+  deletedAt: string | null;
+  updatedAt: string | null;
   date: string | null;
   attachment: MediaAttachment | null;
 }
@@ -99,4 +111,9 @@ export interface CreateGroupRequest {
   description?: string;
   memberIds?: string[];
   profilePicture?: string;
+}
+
+export interface ForwardMessageRequest {
+  messageId: string;
+  targetChatIds: string[];
 }

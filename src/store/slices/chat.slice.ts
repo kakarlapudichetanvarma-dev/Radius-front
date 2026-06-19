@@ -20,7 +20,10 @@ interface ChatState {
   _optimisticAtFetchStart: Message[];
   _locallyReadChatIds: string[];
   archivedChatIds: string[];
-   isNovaChatOpen: boolean;  
+   isNovaChatOpen: boolean;
+  replyingTo: Message | null;       // ← ADD: message currently being replied to
+  starredMessages: Message[];       // ← ADD: cache for the Starred Messages view
+  loadingStarred: boolean;          // ← ADD
 }
 
 function sanitizeChats(chats: ChatSummary[]): ChatSummary[] {
@@ -131,6 +134,9 @@ const initialState: ChatState = {
     } catch { return []; }
   })(),
   isNovaChatOpen: false,
+  replyingTo: null,
+  starredMessages: [],
+  loadingStarred: false,
 };
 
 export const fetchChats = createAsyncThunk(
@@ -193,6 +199,56 @@ export const sendGroupMessage = createAsyncThunk(
   }
 );
 
+// ── Star ──────────────────────────────────────────────────────────────────
+export const starMessage = createAsyncThunk(
+  'chat/starMessage',
+  async (messageId: string, { rejectWithValue }) => {
+    try {
+      const res = await chatService.starMessage(messageId);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to star message');
+    }
+  }
+);
+
+export const unstarMessage = createAsyncThunk(
+  'chat/unstarMessage',
+  async (messageId: string, { rejectWithValue }) => {
+    try {
+      const res = await chatService.unstarMessage(messageId);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to unstar message');
+    }
+  }
+);
+
+export const fetchStarredMessages = createAsyncThunk(
+  'chat/fetchStarredMessages',
+  async (_: void, { rejectWithValue }) => {
+    try {
+      const res = await chatService.getStarredMessages();
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to load starred messages');
+    }
+  }
+);
+
+// ── Forward ───────────────────────────────────────────────────────────────
+export const forwardMessage = createAsyncThunk(
+  'chat/forwardMessage',
+  async (payload: { messageId: string; targetChatIds: string[] }, { rejectWithValue }) => {
+    try {
+      const res = await chatService.forwardMessage(payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to forward message');
+    }
+  }
+);
+
 const chatSlice = createSlice({
   name: 'chat',
   initialState,
@@ -200,6 +256,7 @@ const chatSlice = createSlice({
   reducers: {
     setSelectedChat: (state, action: PayloadAction<ChatSummary | null>) => {
       state.isNovaChatOpen = false;
+      state.replyingTo = null;
       if (action.payload === null) {
         if (state.selectedChatId) {
           state.chatClosedAt[state.selectedChatId] = new Date().toISOString();
@@ -242,6 +299,7 @@ const chatSlice = createSlice({
       state.selectedChatId = null;
       state.messages = [];
       state._optimisticAtFetchStart = [];
+      state.replyingTo = null;
       localStorage.removeItem('chat_selectedChatId');
       localStorage.removeItem('chat_selectedChat');
     },
@@ -260,6 +318,8 @@ const chatSlice = createSlice({
       state._optimisticAtFetchStart = [];
       state._locallyReadChatIds = [];
       state.archivedChatIds = [];
+      state.replyingTo = null;
+      state.starredMessages = [];
       localStorage.removeItem('chat_selectedChatId');
       localStorage.removeItem('chat_selectedChat');
       localStorage.removeItem('chat_chats');
@@ -415,17 +475,10 @@ const chatSlice = createSlice({
 
     // ── Presence actions ────────────────────────────────────────────────────
 
-    /**
-     * Replaces the full online users list (legacy — kept for compatibility).
-     */
     updateOnlineUsers: (state, action: PayloadAction<string[]>) => {
       state.onlineUsers = action.payload;
     },
 
-    /**
-     * Called when a single presence event arrives:
-     * { username, online, lastSeen }
-     */
     applyPresenceEvent: (
       state,
       action: PayloadAction<{ username: string; online: boolean; lastSeen: string | null }>
@@ -436,7 +489,6 @@ const chatSlice = createSlice({
         if (!state.onlineUsers.includes(username)) {
           state.onlineUsers.push(username);
         }
-        // Clear lastSeen when user comes online
         delete state.lastSeenMap[username];
       } else {
         state.onlineUsers = state.onlineUsers.filter(u => u !== username);
@@ -600,12 +652,36 @@ const chatSlice = createSlice({
       state.selectedChatId = null;
       state.messages = [];
       state.isNovaChatOpen = true;
+      state.replyingTo = null;
       localStorage.removeItem('chat_selectedChatId');
       localStorage.removeItem('chat_selectedChat');
     },
 
     closeNovaChat: (state) => {
       state.isNovaChatOpen = false;
+    },
+
+    // ── Reply ────────────────────────────────────────────────────────────────
+    setReplyingTo: (state, action: PayloadAction<Message | null>) => {
+      state.replyingTo = action.payload;
+    },
+
+    clearReplyingTo: (state) => {
+      state.replyingTo = null;
+    },
+
+    // ── Star (local sync helper — used after REST response comes back) ──────
+    applyStarUpdate: (
+      state,
+      action: PayloadAction<{ messageId: string; starred: boolean }>
+    ) => {
+      const { messageId, starred } = action.payload;
+      const msg = state.messages.find(m => m.id === messageId);
+      if (msg) msg.starred = starred;
+
+      if (!starred) {
+        state.starredMessages = state.starredMessages.filter(m => m.id !== messageId);
+      }
     },
   },
 
@@ -688,6 +764,9 @@ const chatSlice = createSlice({
     ...m,
     isEdited: m.isEdited || m.edited || false,   // ← normalize
     isDeleted: m.isDeleted || m.deleted || false, // ← normalize
+    starred: m.starred || false,
+    isForwarded: m.isForwarded || false,
+    replyPreview: m.replyPreview || null,
   }));
 
   const allOptimistics = state.messages.filter(m => m.id.startsWith('temp-'));
@@ -749,6 +828,53 @@ const chatSlice = createSlice({
         if (state.selectedChatId === chatId) {
           state.messages.forEach(m => { if (m.status !== 'READ') m.status = 'READ'; });
         }
+      })
+
+      // ── Star ──────────────────────────────────────────────────────────────
+      .addCase(starMessage.fulfilled, (state, action) => {
+        const updated = action.payload;
+        if (!updated) return;
+        const msg = state.messages.find(m => m.id === updated.id);
+        if (msg) msg.starred = true;
+      })
+
+      .addCase(unstarMessage.fulfilled, (state, action) => {
+        const updated = action.payload;
+        if (!updated) return;
+        const msg = state.messages.find(m => m.id === updated.id);
+        if (msg) msg.starred = false;
+        state.starredMessages = state.starredMessages.filter(m => m.id !== updated.id);
+      })
+
+      .addCase(fetchStarredMessages.pending, (state) => {
+        state.loadingStarred = true;
+      })
+      .addCase(fetchStarredMessages.fulfilled, (state, action) => {
+        state.loadingStarred = false;
+        state.starredMessages = action.payload || [];
+      })
+      .addCase(fetchStarredMessages.rejected, (state) => {
+        state.loadingStarred = false;
+      })
+
+      // ── Forward ───────────────────────────────────────────────────────────
+      .addCase(forwardMessage.fulfilled, (state, action) => {
+        const created: Message[] = action.payload || [];
+        created.forEach(msg => {
+          if (msg.chatId === state.selectedChatId) {
+            const exists = state.messages.some(m => m.id === msg.id);
+            if (!exists) state.messages.push(msg);
+          }
+          const chat = state.chats.find(c => c.chatId === msg.chatId);
+          if (chat) {
+            chat.lastMessage =
+              msg.messageType === 'IMAGE' ? '📷 Image'
+              : msg.messageType === 'FILE' ? `📎 ${msg.attachment?.fileName || 'File'}`
+              : msg.content || 'No messages yet';
+            chat.lastMessageAt = msg.sentAt;
+          }
+        });
+        localStorage.setItem('chat_chats', JSON.stringify(state.chats));
       });
   }
 });
@@ -805,8 +931,11 @@ export const {
   unarchiveChat,
   markChatArchived,
   removeChat,
-  openNovaChat,    // ← ADD
+  openNovaChat,
   closeNovaChat,
+  setReplyingTo,
+  clearReplyingTo,
+  applyStarUpdate,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

@@ -8,6 +8,7 @@ import {
   promoteTempChat,
   receiveMessage,
   updateMessageStatus,
+  clearReplyingTo,
 } from '../../store/slices/chat.slice';
 
 import { trackOptimisticMessage } from '../../socket/message.events';
@@ -27,6 +28,18 @@ interface Props {
   setPendingUpload: (u: PreparedUpload | null) => void;
 }
 
+// Same short label logic used in MessageBubble's reply preview
+function replyPreviewIcon(messageType: string | null | undefined): string {
+  switch (messageType) {
+    case 'IMAGE':   return '📷 ';
+    case 'FILE':    return '📎 ';
+    case 'STICKER': return '🩻 ';
+    case 'CONTACT': return '👤 ';
+    case 'LINK':    return '🔗 ';
+    default:        return '';
+  }
+}
+
 export default function MessageInput({ pendingUpload, setPendingUpload }: Props) {
   const dispatch = useDispatch<AppDispatch>();
 
@@ -41,6 +54,7 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
 
   const selectedChat = useSelector((s: RootState) => s.chat.selectedChat);
   const { user }     = useSelector((s: RootState) => s.auth);
+  const replyingTo   = useSelector((s: RootState) => s.chat.replyingTo);
 
   // ── File handling ─────────────────────────────────────────────────────────
   const handleFile = useCallback(async (file: File) => {
@@ -85,8 +99,10 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
 
     const content        = text.trim();
     const uploadSnapshot = pendingUpload;
+    const replyToIdSnapshot = replyingTo?.id || null;
     setText('');
     setPendingUpload(null);
+    dispatch(clearReplyingTo());
 
     const optimisticId = `temp-${crypto.randomUUID()}`;
     const optimistic = {
@@ -95,7 +111,26 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
       content, messageType: uploadSnapshot ? uploadSnapshot.uploadType : 'TEXT',
       status: 'SENT' as const, sentAt: new Date().toISOString(),
       deliveredAt: null, readAt: null, editedAt: null,
-      isEdited: false, isDeleted: false, replyToId: null, date: null,
+      isEdited: false, isDeleted: false,
+      replyToId: replyToIdSnapshot,
+      replyPreview: replyingTo ? {
+        messageId: replyingTo.id,
+        senderId: replyingTo.senderId,
+        senderUsername: replyingTo.senderUsername,
+        messageType: replyingTo.messageType,
+        previewText: replyingTo.messageType === 'TEXT'
+          ? (replyingTo.content || '')
+          : replyingTo.messageType === 'IMAGE' ? 'Photo'
+          : replyingTo.messageType === 'FILE' ? (replyingTo.attachment?.fileName || 'File')
+          : replyingTo.messageType === 'STICKER' ? 'Sticker'
+          : replyingTo.messageType === 'CONTACT' ? 'Contact card'
+          : replyingTo.messageType === 'LINK' ? (replyingTo.content || 'Link')
+          : '',
+        deleted: false,
+      } : null,
+      isForwarded: false,
+      starred: false,
+      date: null,
       attachment: uploadSnapshot ? {
         id: optimisticId, fileName: uploadSnapshot.fileName, fileType: uploadSnapshot.fileType,
         fileSizeBytes: uploadSnapshot.fileSizeBytes, mediaType: uploadSnapshot.uploadType,
@@ -113,6 +148,7 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
       const msgType     = uploadSnapshot ? uploadSnapshot.uploadType : isLink ? 'LINK' : 'TEXT';
       const basePayload = {
         content, messageType: msgType,
+        ...(replyToIdSnapshot ? { replyToId: replyToIdSnapshot } : {}),
         ...(msgType === 'LINK' ? { url: content } : {}),
         ...(uploadSnapshot ? {
           fileData: uploadSnapshot.base64, fileName: uploadSnapshot.fileName,
@@ -145,6 +181,9 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
 
   useEffect(() => () => { if (typingTimeout.current) clearTimeout(typingTimeout.current); sendStopTyping(); }, []);
 
+  // Clear any pending reply if the user switches chats
+  useEffect(() => { dispatch(clearReplyingTo()); }, [selectedChat?.chatId, dispatch]);
+
   if (!selectedChat) return null;
 
   return (
@@ -160,6 +199,30 @@ export default function MessageInput({ pendingUpload, setPendingUpload }: Props)
       {showEmoji && (
         <div className="absolute bottom-[72px] left-4 z-50 shadow-xl rounded-2xl overflow-hidden">
           <VueWrapper onSelect={emoji => { setText(p => p + emoji); setShowEmoji(false); }} />
+        </div>
+      )}
+
+      {/* Reply preview bar */}
+      {replyingTo && (
+        <div className="bg-purple-50 border-t border-purple-100 px-4 py-2.5 flex items-center gap-3">
+          <div className="w-1 self-stretch bg-purple-400 rounded-full flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-purple-600">
+              Replying to {replyingTo.senderUsername || 'message'}
+            </p>
+            <p className="text-xs text-gray-500 truncate max-w-[320px]">
+              {replyPreviewIcon(replyingTo.messageType)}
+              {replyingTo.messageType === 'TEXT'
+                ? (replyingTo.content || '')
+                : replyingTo.messageType === 'IMAGE' ? 'Photo'
+                : replyingTo.messageType === 'FILE' ? (replyingTo.attachment?.fileName || 'File')
+                : replyingTo.messageType === 'STICKER' ? 'Sticker'
+                : replyingTo.messageType === 'CONTACT' ? 'Contact card'
+                : replyingTo.messageType === 'LINK' ? (replyingTo.content || 'Link')
+                : ''}
+            </p>
+          </div>
+          <button onClick={() => dispatch(clearReplyingTo())} className="text-gray-400 hover:text-gray-600 text-lg transition flex-shrink-0">✕</button>
         </div>
       )}
 

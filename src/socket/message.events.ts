@@ -54,6 +54,9 @@ const buildRealMessage = (payload: any, messageId: string) => ({
   isEdited: payload.isEdited ?? payload.edited ?? false,
   editedAt: payload.editedAt || null,
   replyToId: payload.replyToId || null,
+  replyPreview: payload.replyPreview || null,
+  isForwarded: payload.isForwarded || payload.forwarded || false,
+  starred: payload.starred || false,
   attachment: payload.attachment || null,
   date: null
 });

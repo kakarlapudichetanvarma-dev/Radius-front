@@ -4,7 +4,13 @@ import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store';
 import type { Message } from '../../types/chat.types';
 import { chatService } from '../../services/chat.service';
-import { deleteMessageLocally } from '../../store/slices/chat.slice';
+import {
+  deleteMessageLocally,
+  setReplyingTo,
+  starMessage,
+  unstarMessage,
+} from '../../store/slices/chat.slice';
+import ForwardModal from '../common/ForwardModal';
 
 interface Props {
   message: Message;
@@ -69,10 +75,27 @@ function downloadBase64(path: string, name: string, type: string | null | undefi
   } catch { /* ignore */ }
 }
 
+// Short label used in the reply preview when no previewText is available
+function replyPreviewIcon(messageType: string | null | undefined): string {
+  switch (messageType) {
+    case 'IMAGE':   return '📷 ';
+    case 'FILE':    return '📎 ';
+    case 'STICKER': return '🩻 ';
+    case 'CONTACT': return '👤 ';
+    case 'LINK':    return '🔗 ';
+    default:        return '';
+  }
+}
+
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
-function MessageContextMenu({ isMe, message, onClose, onEdit }: {
-  isMe: boolean; message: Message; onClose: () => void; onEdit: () => void;
+function MessageContextMenu({ isMe, message, onClose, onEdit, onReply, onForward }: {
+  isMe: boolean;
+  message: Message;
+  onClose: () => void;
+  onEdit: () => void;
+  onReply: () => void;
+  onForward: () => void;
 }) {
   const dispatch = useDispatch<AppDispatch>();
   const menuRef  = useRef<HTMLDivElement>(null);
@@ -88,6 +111,8 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: {
     catch { return false; }
   })();
 
+  const isStarred = !!message.starred;
+
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
@@ -95,6 +120,14 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
+
+  const handleToggleStar = async () => {
+    try {
+      if (isStarred) await dispatch(unstarMessage(message.id));
+      else await dispatch(starMessage(message.id));
+    } catch { /* ignore */ }
+    onClose();
+  };
 
   return (
     <motion.div
@@ -105,6 +138,21 @@ function MessageContextMenu({ isMe, message, onClose, onEdit }: {
       transition={{ duration: 0.1 }}
       className={`absolute top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden min-w-[155px] ${isMe ? 'right-0' : 'left-0'}`}
     >
+      <button onClick={() => { onReply(); onClose(); }}
+        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+        ↩️ Reply
+      </button>
+
+      <button onClick={() => { onForward(); onClose(); }}
+        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+        ➡️ Forward
+      </button>
+
+      <button onClick={handleToggleStar}
+        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+        {isStarred ? '⭐ Unstar' : '☆ Star'}
+      </button>
+
       {canCopy && (
         <button onClick={() => { if (message.content) navigator.clipboard.writeText(message.content).catch(() => {}); onClose(); }}
           className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
@@ -172,6 +220,8 @@ function EditInput({ message, onCancel, onSaved }: {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function MessageBubble({ message, isMe }: Props) {
+  const dispatch = useDispatch<AppDispatch>();
+
   const [fullscreen, setFullscreen]     = useState<string | null>(null);
   const [showMenu, setShowMenu]         = useState(false);
   const [isEditing, setIsEditing]       = useState(false);
@@ -179,6 +229,7 @@ export default function MessageBubble({ message, isMe }: Props) {
   const [localEdited, setLocalEdited]   = useState(false);
   const [localEditedAt, setLocalEditedAt] = useState<string | null>(null);
   const [isHovered, setIsHovered]       = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
 
   const content  = localContent ?? message.content;
   // Always prefer server values (persists after refresh); local state only for optimistic UI
@@ -193,6 +244,10 @@ export default function MessageBubble({ message, isMe }: Props) {
     setIsHovered(false);   // ← reset hover so arrow disappears
     setShowMenu(false);    // ← ensure menu is also closed
   }, []);
+
+  const handleReply = useCallback(() => {
+    dispatch(setReplyingTo(message));
+  }, [dispatch, message]);
 
   const fmt = (ts: string) => {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
@@ -233,6 +288,13 @@ export default function MessageBubble({ message, isMe }: Props) {
         </div>
       )}
 
+      {/* Forward modal */}
+      <AnimatePresence>
+        {showForwardModal && (
+          <ForwardModal message={message} onClose={() => setShowForwardModal(false)} />
+        )}
+      </AnimatePresence>
+
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -248,6 +310,13 @@ export default function MessageBubble({ message, isMe }: Props) {
             onMouseLeave={() => { setIsHovered(false); setShowMenu(false); }}
           >
 
+            {/* Forwarded label */}
+            {message.isForwarded && (
+              <p className={`text-[11px] italic mb-1 flex items-center gap-1 ${isMe ? 'text-purple-200' : 'text-gray-400'} ${message.messageType === 'IMAGE' ? 'px-3 pt-2' : ''}`}>
+                ➡️ Forwarded
+              </p>
+            )}
+
             {/* Sender name — group incoming */}
             {!isMe && message.senderUsername && (
               <p className={`text-xs font-semibold mb-1 text-purple-500 ${message.messageType === 'IMAGE' ? 'px-3 pt-2' : ''}`}>
@@ -255,10 +324,23 @@ export default function MessageBubble({ message, isMe }: Props) {
               </p>
             )}
 
-            {/* Reply */}
+            {/* Reply preview */}
             {message.replyToId && (
               <div className={`border-l-2 pl-2 mb-2 text-xs ${isMe ? 'border-purple-300 text-purple-200' : 'border-purple-400 text-gray-400'}`}>
-                Replying to a message
+                {message.replyPreview ? (
+                  <>
+                    <p className={`font-semibold text-[11px] ${isMe ? 'text-purple-100' : 'text-purple-500'}`}>
+                      {message.replyPreview.senderUsername || 'Someone'}
+                    </p>
+                    <p className="truncate max-w-[220px]">
+                      {message.replyPreview.deleted
+                        ? 'This message was deleted'
+                        : `${replyPreviewIcon(message.replyPreview.messageType)}${message.replyPreview.previewText || ''}`}
+                    </p>
+                  </>
+                ) : (
+                  <p>Replying to a message</p>
+                )}
               </div>
             )}
 
@@ -341,6 +423,9 @@ export default function MessageBubble({ message, isMe }: Props) {
             {/* Time + ticks / Chevron — mutually exclusive on hover */}
             {!isEditing && (
               <div className={`flex items-center justify-end gap-1 mt-1 ${message.messageType === 'IMAGE' ? 'px-3 pb-2' : ''}`}>
+                {message.starred && (
+                  <span className={`text-[11px] ${isMe ? 'text-purple-200' : 'text-amber-500'}`} title="Starred">⭐</span>
+                )}
                 {isHovered ? (
                   <div className="relative">
                     <button
@@ -359,6 +444,8 @@ export default function MessageBubble({ message, isMe }: Props) {
                           message={message}
                           onClose={() => setShowMenu(false)}
                           onEdit={() => setIsEditing(true)}
+                          onReply={handleReply}
+                          onForward={() => setShowForwardModal(true)}
                         />
                       )}
                     </AnimatePresence>

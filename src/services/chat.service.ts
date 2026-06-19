@@ -6,7 +6,8 @@ import type {
   SendGroupMessageRequest,
   CreateGroupRequest,
   GroupMember,
-  MediaAttachment
+  MediaAttachment,
+  ForwardMessageRequest
 } from '../types/chat.types';
 
 interface ApiResponse<T> {
@@ -63,6 +64,20 @@ export const chatService = {
 
   isUserBlocked: (username: string) =>
     api.get<ApiResponse<boolean>>(`/api/v1/chat/users/${username}/block`),
+
+  // ── Star ────────────────────────────────────────────────
+  starMessage: (messageId: string) =>
+    api.post<ApiResponse<Message>>(`/api/v1/chat/messages/${messageId}/star`),
+
+  unstarMessage: (messageId: string) =>
+    api.delete<ApiResponse<Message>>(`/api/v1/chat/messages/${messageId}/star`),
+
+  getStarredMessages: () =>
+    api.get<ApiResponse<Message[]>>('/api/v1/chat/messages/starred'),
+
+  // ── Forward ─────────────────────────────────────────────
+  forwardMessage: (data: ForwardMessageRequest) =>
+    api.post<ApiResponse<Message[]>>('/api/v1/chat/messages/forward', data),
 
   // ── Groups ─────────────────────────────────────────────
   createGroup: (data: CreateGroupRequest) =>
